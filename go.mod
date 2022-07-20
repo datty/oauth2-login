@@ -1,4 +1,4 @@
-module github.com/metal-stack/oauth2-login
+module github.com/datty/oauth2-login
 
 go 1.16
 

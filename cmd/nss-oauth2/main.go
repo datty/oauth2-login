@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/metal-stack/oauth2-login/internal/conf"
-	"github.com/metal-stack/oauth2-login/internal/passwd"
+	"github.com/datty/oauth2-login/internal/conf"
+	"github.com/datty/oauth2-login/internal/passwd"
 
 	"github.com/shirou/gopsutil/v3/process"
 

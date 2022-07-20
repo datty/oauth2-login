@@ -33,7 +33,7 @@ import (
 	"os/exec"
 	"os/user"
 
-	"github.com/metal-stack/oauth2-login/internal/conf"
+	"github.com/datty/oauth2-login/internal/conf"
 
 	"golang.org/x/oauth2"
 	"gopkg.in/square/go-jose.v2/jwt"
