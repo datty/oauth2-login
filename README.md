@@ -43,6 +43,7 @@ client-secret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 redirect-url: "urn:ietf:wg:oauth:2.0:oob"
 scopes: 
     - "email"
+    - "openid"
 endpoint-auth-url: "https://login.windows.net/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/oauth2/authorize"
 endpoint-token-url: "https://login.windows.net/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/oauth2/token"
 username-format: "%s@example.org"
