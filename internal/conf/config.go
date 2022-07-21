@@ -12,14 +12,13 @@ const configFile = "/etc/oauth2-login.conf"
 // config define openid Connect parameters
 // and setting for this module
 type Config struct {
-	ClientID         string   `yaml:"client-id"`
-	ClientSecret     string   `yaml:"client-secret"`
-	RedirectURL      string   `yaml:"redirect-url"`
-	Scopes           []string `yaml:"scopes"`
-	EndpointAuthURL  string   `yaml:"endpoint-auth-url"`
-	EndpointTokenURL string   `yaml:"endpoint-token-url"`
-	UsernameFormat   string   `yaml:"username-format"`
-	SufficientRoles  []string `yaml:"sufficient-roles"`
+	ClientID        string   `yaml:"client-id"`
+	ClientSecret    string   `yaml:"client-secret"`
+	RedirectURL     string   `yaml:"redirect-url"`
+	Scopes          []string `yaml:"scopes"`
+	TenantID        string   `yaml:"tenant-id"`
+	Domain          string   `yaml:"o365-domain"`
+	SufficientRoles []string `yaml:"sufficient-roles"`
 	// AllowedRoles are OS level groups which must be present on the OS before
 	AllowedRoles []string `yaml:"allowed-roles"`
 	CreateUser   bool     `yaml:"createuser"`

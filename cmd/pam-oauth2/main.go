@@ -20,7 +20,6 @@
 
 package main
 
-// #include <security/pam_appl.h>
 import "C"
 import (
 	"context"
@@ -35,7 +34,7 @@ import (
 
 	"github.com/datty/oauth2-login/internal/conf"
 
-	"golang.org/x/oauth2"
+	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
@@ -69,63 +68,56 @@ func pamAuthenticate(pamh *C.pam_handle_t, uid int, username string, argv []stri
 
 	password := strings.TrimSpace(requestPass(pamh, C.PAM_PROMPT_ECHO_OFF, "oauth2-Password: "))
 
-	// authentication agains oidc provider
-	// load configuration from yaml config
-	oauth2Config := oauth2.Config{
-		ClientID:     config.ClientID,
-		ClientSecret: config.ClientSecret,
-		Scopes:       config.Scopes,
-		Endpoint: oauth2.Endpoint{
-			AuthURL:  config.EndpointAuthURL,
-			TokenURL: config.EndpointTokenURL,
-		},
-		RedirectURL: config.RedirectURL,
+	//Open AzureAD
+	app, err := public.New(config.ClientID, public.WithCache(cacheAccessor), public.WithAuthority("https://login.microsoftonline.com/"+config.TenantID))
+	if err != nil {
+		panic(err)
 	}
 
-	// send authentication request to oidc provider
-	pamLog("call OIDC provider and get token")
-
-	oauth2Token, err := oauth2Config.PasswordCredentialsToken(
+	//Auth with Username/Password
+	pamLog("pam_oauth2: call AzureAD and request token")
+	result, err := app.AcquireTokenByUsernamePassword(
 		context.Background(),
-		fmt.Sprintf(config.UsernameFormat, username),
+		config.Scopes,
+		fmt.Sprintf(config.Domain, username),
 		password,
 	)
 	if err != nil {
-		pamLog("oauth2 authentication failed: %v", err)
+		pamLog("pam_oauth2: oauth2 authentication failed: %v", err)
 		return PAM_AUTH_ERR
 	}
 
 	// check here is token vaild
-	if !oauth2Token.Valid() {
-		pamLog("oauth2 authentication failed")
+	if !result.AccessToken {
+		pamLog("pam_oauth2: oauth2 authentication failed")
 		return PAM_AUTH_ERR
 	}
 
 	// check group for authentication is in token
-	roles, err := validateClaims(oauth2Token.AccessToken, config.SufficientRoles)
-	if err != nil {
-		pamLog("error validate claims: %v", err)
-		return PAM_AUTH_ERR
-	}
+	//roles, err := validateClaims(oauth2Token.AccessToken, config.SufficientRoles)
+	//if err != nil {
+	//		pamLog("error validate claims: %v", err)
+	//		return PAM_AUTH_ERR
+	//	}
 
 	// Filter out all not allowed roles comming from OIDC
-	groups := []string{}
-	for _, r := range roles {
-		for _, ar := range config.AllowedRoles {
-			if r == ar {
-				groups = append(groups, r)
-			}
-		}
-	}
-	if config.CreateUser {
-		err = modifyUser(username, groups)
-		if err != nil {
-			pamLog("unable to add groups: %v", err)
-			return PAM_AUTH_ERR
-		}
-	}
-
-	pamLog("oauth2 authentication succeeded")
+	//	groups := []string{}
+	//	for _, r := range roles {
+	//		for _, ar := range config.AllowedRoles {
+	//			if r == ar {
+	//				groups = append(groups, r)
+	//			}
+	//		}
+	//	}
+	//	if config.CreateUser {
+	//		err = modifyUser(username, groups)
+	//		if err != nil {
+	//			pamLog("unable to add groups: %v", err)
+	//			return PAM_AUTH_ERR
+	//		}
+	//	}
+	//
+	pamLog("pam_oauth2: oauth2 authentication succeeded")
 	return PAM_SUCCESS
 }
 
