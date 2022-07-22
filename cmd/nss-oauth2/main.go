@@ -7,8 +7,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/datty/oauth2-login/internal/conf"
-	"github.com/datty/oauth2-login/internal/passwd"
+	"github.com/datty/pam-azuread/internal/conf"
+	"github.com/datty/pam-azuread/internal/passwd"
 
 	"github.com/shirou/gopsutil/v3/process"
 
@@ -19,7 +19,7 @@ import (
 )
 
 // app name
-const app = "nss-oauth2"
+const app = "nss-azuread"
 
 // Placeholder main() stub is neccessary for compile.
 func main() {}

@@ -1,4 +1,5 @@
 // Copyright © 2017 Shinichi MOTOKI
+// Copyright © 2017 Oliver Smith
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,7 +25,6 @@ package main
 import "C"
 import (
 	"context"
-	"regexp"
 	"runtime"
 	"strings"
 
@@ -33,14 +33,14 @@ import (
 	"os/exec"
 	"os/user"
 
-	"github.com/datty/oauth2-login/internal/conf"
+	"github.com/datty/pam-azuread/internal/conf"
 
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/public"
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 // app name
-const app = "pam_oauth2"
+const app = "pam_azuread"
 
 func pamLog(format string, args ...interface{}) {
 	l, err := syslog.New(syslog.LOG_AUTH|syslog.LOG_WARNING, app)
@@ -57,14 +57,6 @@ func pamAuthenticate(pamh *C.pam_handle_t, uid int, username string, argv []stri
 	if err != nil {
 		pamLog("Error reading config: %v", err)
 		return PAM_OPEN_ERR
-	}
-
-	if len(config.NameRegex) > 0 {
-		// Accept only for usernames that match the Regex
-		if match, _ := regexp.MatchString(config.NameRegex, username); match == false {
-			pamLog("username %s did not match 'name-regex'", username)
-			return PAM_USER_UNKNOWN
-		}
 	}
 
 	password := strings.TrimSpace(requestPass(pamh, C.PAM_PROMPT_ECHO_OFF, "oauth2-Password: "))

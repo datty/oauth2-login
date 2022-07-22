@@ -1,4 +1,4 @@
-# oauth2-login
+# pam-azuread
 
 This PAM module allows for authentication against AzureAD using the Microsoft Authentication Library. 
 
@@ -21,24 +21,24 @@ sudo make install
 add the following lines to `/etc/pam.d/common-auth`
 
 ```
-#### authenticate with oauth2 flow #####
-auth sufficient pam_oauth2.so
+#### authenticate with azuread flow #####
+auth sufficient pam_azuread.so
 ```
 
 ### NSS
 
-add `oauth2` to the `passwd:` line in `/etc/nsswitch.conf` like this:
+add `azuread` to the `passwd:` line in `/etc/nsswitch.conf` like this:
 
 ```
 # /etc/nsswitch.conf
 
-passwd:         files systemd oauth2
+passwd:         files systemd azuread
 ```
 
 ### oauth2-login.config
 
-Configuration must be stored in `/etc/oauth2-login.config`. There is no option to change the location
-of this config file. Examples:
+Configuration must be stored in `/etc/azuread.conf`. There is no option to change the location
+of this config file. Example:
 
 #### Azure AD
 
@@ -57,13 +57,11 @@ sufficient-roles:
     - "serverAccess"
 allowed-roles: 
     - "wheel"
-name-regex: "test.*"
 ```
 
 #### Config options
 
 - `createuser`: Enable user account autocreation.
-- `name-regex`: Only logins that match the regex are allowed/created.
 - `sufficient-roles`: User must have these roles assigned to login.
 - `allowed-roles`: If a user has these roles, they will be assigned to his Unix user as groups.
   All other roles will be ignored.

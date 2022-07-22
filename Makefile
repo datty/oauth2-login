@@ -21,25 +21,25 @@ pam:
 			-X 'github.com/metal-stack/v.Revision=$(GITVERSION)' \
 			-X 'github.com/metal-stack/v.GitSHA1=$(SHA)' \
 			-X 'github.com/metal-stacj/v.BuildDate=$(BUILDDATE)'" \
-                 --buildmode=c-shared -o bin/pam_oauth2.so ./cmd/pam-oauth2
-	strip bin/pam_oauth2.so
+                 --buildmode=c-shared -o bin/pam_azuread.so ./cmd/pam-azuread
+	strip bin/pam_azuread.so
 
 .PHONY: nss
 nss:
-	CGO_CFLAGS='-g -O2 -D __LIB_NSS_NAME=oauth2'  \
+	CGO_CFLAGS='-g -O2 -D __LIB_NSS_NAME=azuread'  \
 	go build -ldflags "-w \
 			-X 'github.com/metal-stack/v.Version=$(VERSION)' \
 			-X 'github.com/metal-stack/v.Revision=$(GITVERSION)' \
 			-X 'github.com/metal-stack/v.GitSHA1=$(SHA)' \
 			-X 'github.com/metal-stacj/v.BuildDate=$(BUILDDATE)'" \
-	         --buildmode=c-shared -o bin/libnss_oauth2.so.2 ./cmd/nss-oauth2
-	strip bin/libnss_oauth2.so.2
+	         --buildmode=c-shared -o bin/libnss_azuread.so.2 ./cmd/nss-azuread
+	strip bin/libnss_azuread.so.2
 
 .PHONY: clean
 clean:
 	rm -rf bin/*
 
 install: all
-	${INSTALL_DATA} bin/libnss_oauth2.so.2 ${prefix}/lib/libnss_oauth2.so.2
-	${INSTALL_PROGRAM} bin/pam_oauth2.so ${prefix}/usr/lib/x86_64-linux-gnu/security/pam_oauth2.so
-	${INSTALL_DATA} sample.yaml ${prefix}/etc/oauth2-login.conf
+	${INSTALL_DATA} bin/libnss_azuread.so.2 ${prefix}/lib/libnss_azuread.so.2
+	${INSTALL_PROGRAM} bin/pam_azuread.so ${prefix}/usr/lib/x86_64-linux-gnu/security/pam_azuread.so
+	${INSTALL_DATA} sample.yaml ${prefix}/etc/azuread.conf

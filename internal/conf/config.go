@@ -7,7 +7,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-const configFile = "/etc/oauth2-login.conf"
+const configFile = "/etc/azuread.conf"
 
 // config define openid Connect parameters
 // and setting for this module
