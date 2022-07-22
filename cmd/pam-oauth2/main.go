@@ -21,7 +21,6 @@
 package main
 
 //#include <security/pam_appl.h>
-
 import "C"
 import (
 	"context"

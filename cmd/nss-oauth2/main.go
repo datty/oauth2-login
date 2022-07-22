@@ -34,14 +34,13 @@ type LibNssOauth struct{ nss.LIBNSS }
 
 var config *conf.Config
 
-func (self LibNssOauth) oauth_init() (base.AuthResult, error) {
+func (self LibNssOauth) oauth_init() (result confidential.AuthResult, err error) {
 	//Load config vars
-	if config == nil {
-		var err error
 
+	if config == nil {
 		if config, err = conf.ReadConfig(); err != nil {
 			fmt.Println("unable to read configfile:", err)
-			return nil, err
+			return result, err
 		}
 	}
 	//Attempt oauth
@@ -55,7 +54,7 @@ func (self LibNssOauth) oauth_init() (base.AuthResult, error) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	result, err := app.AcquireTokenSilent(context.Background(), config.Scopes)
+	result, err = app.AcquireTokenSilent(context.Background(), config.Scopes)
 	if err != nil {
 		result, err = app.AcquireTokenByCredential(context.Background(), config.Scopes)
 		if err != nil {
@@ -83,6 +82,7 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 		fmt.Println("username", name, "did not match 'name-regex':", err)
 		return nss.StatusNotfound, nssStructs.Passwd{}
 	}
+	fmt.Println("Test output %s", result)
 
 	if config.CreateUser {
 		// create user if none exists
