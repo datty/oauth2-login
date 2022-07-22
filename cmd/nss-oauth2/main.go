@@ -1,9 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"os/exec"
-	"regexp"
 	"strings"
 
 	"github.com/datty/oauth2-login/internal/conf"
@@ -13,6 +14,8 @@ import (
 
 	nss "github.com/protosam/go-libnss"
 	nssStructs "github.com/protosam/go-libnss/structs"
+
+	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/confidential"
 )
 
 // app name
@@ -31,6 +34,41 @@ type LibNssOauth struct{ nss.LIBNSS }
 
 var config *conf.Config
 
+func (self LibNssOauth) oauth_init() (base.AuthResult, error) {
+	//Load config vars
+	if config == nil {
+		var err error
+
+		if config, err = conf.ReadConfig(); err != nil {
+			fmt.Println("unable to read configfile:", err)
+			return nil, err
+		}
+	}
+	//Attempt oauth
+	cred, err := confidential.NewCredFromSecret(config.ClientSecret)
+	if err != nil {
+		log.Fatal(err)
+	}
+	//Disable cache for now, need to implement proper caching method and not just steal the sample
+	//app, err := confidential.New(config.ClientID, cred, confidential.WithAuthority("https://login.microsoftonline.com/"+config.TenantID), confidential.WithAccessor(cacheAccessor))
+	app, err := confidential.New(config.ClientID, cred, confidential.WithAuthority("https://login.microsoftonline.com/"+config.TenantID))
+	if err != nil {
+		log.Fatal(err)
+	}
+	result, err := app.AcquireTokenSilent(context.Background(), config.Scopes)
+	if err != nil {
+		result, err = app.AcquireTokenByCredential(context.Background(), config.Scopes)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("Access Token Is " + result.AccessToken)
+		return result, err
+	}
+	fmt.Println("Silently acquired token " + result.AccessToken)
+	return result, err
+
+}
+
 // PasswdAll will populate all entries for libnss
 func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 	return nss.StatusSuccess, []nssStructs.Passwd{}
@@ -38,21 +76,12 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 
 // PasswdByName returns a single entry by name.
 func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd) {
-	if config == nil {
-		var err error
 
-		if config, err = conf.ReadConfig(); err != nil {
-			fmt.Println("unable to read configfile:", err)
-			return nss.StatusNotfound, nssStructs.Passwd{}
-		}
-	}
-
-	if len(config.NameRegex) > 0 {
-		// Accept only for usernames that match the Regex
-		if match, err := regexp.MatchString(config.NameRegex, name); match == false {
-			fmt.Println("username", name, "did not match 'name-regex':", err)
-			return nss.StatusNotfound, nssStructs.Passwd{}
-		}
+	//Get OAuth token
+	result, err := self.oauth_init()
+	if err != nil {
+		fmt.Println("username", name, "did not match 'name-regex':", err)
+		return nss.StatusNotfound, nssStructs.Passwd{}
 	}
 
 	if config.CreateUser {
