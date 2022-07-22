@@ -1,4 +1,4 @@
-module github.com/datty/oauth2-login
+module github.com/datty/pam-azuread
 
 go 1.16
 
