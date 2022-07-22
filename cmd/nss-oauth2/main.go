@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -27,6 +27,14 @@ func main() {}
 func init() {
 	// We set our implementation to "LibNssOauth", so that go-libnss will use the methods we create
 	nss.SetImpl(LibNssOauth{})
+
+	//Enable Debug Logging
+	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
 }
 
 // LibNssExternal creates a struct that implements LIBNSS stub methods.
@@ -39,7 +47,7 @@ func (self LibNssOauth) oauth_init() (result confidential.AuthResult, err error)
 
 	if config == nil {
 		if config, err = conf.ReadConfig(); err != nil {
-			fmt.Println("unable to read configfile:", err)
+			log.Println("unable to read configfile:", err)
 			return result, err
 		}
 	}
@@ -60,10 +68,10 @@ func (self LibNssOauth) oauth_init() (result confidential.AuthResult, err error)
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Println("Access Token Is " + result.AccessToken)
+		log.Println("Access Token Is " + result.AccessToken)
 		return result, err
 	}
-	fmt.Println("Silently acquired token " + result.AccessToken)
+	log.Println("Silently acquired token " + result.AccessToken)
 	return result, err
 
 }
@@ -79,10 +87,10 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 	//Get OAuth token
 	result, err := self.oauth_init()
 	if err != nil {
-		fmt.Println("username", name, "did not match 'name-regex':", err)
+		log.Println("username", name, "did not match 'name-regex':", err)
 		return nss.StatusNotfound, nssStructs.Passwd{}
 	}
-	fmt.Println("Test output %s", result)
+	log.Println("Test output %s", result)
 
 	if config.CreateUser {
 		// create user if none exists
@@ -90,7 +98,7 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 			useradd, err := exec.LookPath("/usr/sbin/useradd")
 
 			if err != nil {
-				fmt.Println("useradd command was not found:", err)
+				log.Println("useradd command was not found:", err)
 				return nss.StatusNotfound, nssStructs.Passwd{}
 			}
 
@@ -102,14 +110,14 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 			processes, err := process.Processes()
 
 			if err != nil {
-				fmt.Println("unable to read process list:", err)
+				log.Println("unable to read process list:", err)
 				return nss.StatusNotfound, nssStructs.Passwd{}
 			}
 
 			for _, p := range processes {
 				pcmd, err := p.Cmdline()
 				if err != nil {
-					fmt.Println("unable to read process list:", err)
+					log.Println("unable to read process list:", err)
 					return nss.StatusNotfound, nssStructs.Passwd{}
 				}
 
@@ -123,7 +131,7 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 			out, err := cmd.CombinedOutput()
 
 			if err != nil {
-				fmt.Println("unable to create user output:", string(out), err)
+				log.Println("unable to create user output:", string(out), err)
 				return nss.StatusNotfound, nssStructs.Passwd{}
 			}
 		}
@@ -132,7 +140,7 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 	// user should have been created by now
 	osuser, err := passwd.Lookup(name)
 	if err != nil {
-		fmt.Println("user", name, "not found in passwd:", err)
+		log.Println("user", name, "not found in passwd:", err)
 		return nss.StatusNotfound, nssStructs.Passwd{}
 	}
 
