@@ -20,6 +20,8 @@
 
 package main
 
+//#include <security/pam_appl.h>
+
 import "C"
 import (
 	"context"
@@ -69,7 +71,7 @@ func pamAuthenticate(pamh *C.pam_handle_t, uid int, username string, argv []stri
 	password := strings.TrimSpace(requestPass(pamh, C.PAM_PROMPT_ECHO_OFF, "oauth2-Password: "))
 
 	//Open AzureAD
-	app, err := public.New(config.ClientID, public.WithCache(cacheAccessor), public.WithAuthority("https://login.microsoftonline.com/"+config.TenantID))
+	app, err := public.New(config.ClientID, public.WithAuthority("https://login.microsoftonline.com/"+config.TenantID))
 	if err != nil {
 		panic(err)
 	}
