@@ -35,7 +35,7 @@ add `azuread` to the `passwd:` line in `/etc/nsswitch.conf` like this:
 passwd:         files systemd azuread
 ```
 
-### oauth2-login.config
+### azuread.conf
 
 Configuration must be stored in `/etc/azuread.conf`. There is no option to change the location
 of this config file. Example:
