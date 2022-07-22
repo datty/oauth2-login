@@ -1,5 +1,11 @@
 # oauth2-login
 
+This PAM module allows for authentication against AzureAD using the Microsoft Authentication Library. 
+
+This is based on work in the following repos:
+- https://github.com/shimt/pam-exec-oauth2
+- https://github.com/metal-stack/pam-exec-oauth2
+
 ## Install
 
 ```bash
@@ -44,29 +50,8 @@ redirect-url: "urn:ietf:wg:oauth:2.0:oob"
 scopes: 
     - "email"
     - "openid"
-endpoint-auth-url: "https://login.windows.net/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/oauth2/authorize"
-endpoint-token-url: "https://login.windows.net/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/oauth2/token"
-username-format: "%s@example.org"
-createuser: true
-sufficient-roles: 
-    - "serverAccess"
-allowed-roles: 
-    - "wheel"
-name-regex: "test.*"
-```
-
-#### Keycloak
-
-```yaml
----
-client-id: "xxxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-client-secret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-redirect-url: "urn:ietf:wg:oauth:2.0:oob"
-scopes: 
-    - "email"
-endpoint-auth-url: "https://%host%/auth/realms/%yourrealm%/protocol/openid-connect/auth"
-endpoint-token-url: "https://%host%/auth/realms/%yourrealm%/protocol/openid-connect/token"
-username-format: "%s"
+tenant-id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+o365-domain: "%s@example.org"
 createuser: true
 sufficient-roles: 
     - "serverAccess"
