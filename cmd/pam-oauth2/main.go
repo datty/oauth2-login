@@ -90,7 +90,7 @@ func pamAuthenticate(pamh *C.pam_handle_t, uid int, username string, argv []stri
 	}
 
 	// check here is token vaild
-	if !result.AccessToken {
+	if len(result.AccessToken) == 0 {
 		pamLog("pam_oauth2: oauth2 authentication failed")
 		return PAM_AUTH_ERR
 	}
