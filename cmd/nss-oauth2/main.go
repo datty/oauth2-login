@@ -52,14 +52,17 @@ func (self LibNssOauth) oauth_init() (result confidential.AuthResult, err error)
 			return result, err
 		}
 	}
+
+	//Enable oauth cred cache
+	cacheAccessor := &TokenCache{"/var/tmp/" + app + "_cache.json"}
+
 	//Attempt oauth
 	cred, err := confidential.NewCredFromSecret(config.ClientSecret)
 	if err != nil {
 		log.Fatal(err)
 	}
-	//Disable cache for now, need to implement proper caching method and not just steal the sample
-	//app, err := confidential.New(config.ClientID, cred, confidential.WithAuthority("https://login.microsoftonline.com/"+config.TenantID), confidential.WithAccessor(cacheAccessor))
-	app, err := confidential.New(config.ClientID, cred, confidential.WithAuthority("https://login.microsoftonline.com/"+config.TenantID))
+	app, err := confidential.New(config.ClientID, cred, confidential.WithAuthority("https://login.microsoftonline.com/"+config.TenantID), confidential.WithAccessor(cacheAccessor))
+	//app, err := confidential.New(config.ClientID, cred, confidential.WithAuthority("https://login.microsoftonline.com/"+config.TenantID))
 	if err != nil {
 		log.Fatal(err)
 	}
