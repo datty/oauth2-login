@@ -15,14 +15,14 @@ type Config struct {
 	ClientID        string   `yaml:"client-id"`
 	ClientSecret    string   `yaml:"client-secret"`
 	RedirectURL     string   `yaml:"redirect-url"`
-	Scopes          []string `yaml:"scopes"`
+	PamScopes       []string `yaml:"pam-scopes"`
+	NssScopes       []string `yaml:"nss-scopes"`
 	TenantID        string   `yaml:"tenant-id"`
 	Domain          string   `yaml:"o365-domain"`
 	SufficientRoles []string `yaml:"sufficient-roles"`
 	// AllowedRoles are OS level groups which must be present on the OS before
 	AllowedRoles []string `yaml:"allowed-roles"`
 	CreateUser   bool     `yaml:"createuser"`
-	NameRegex    string   `yaml:"name-regex"`
 }
 
 // ReadConfig

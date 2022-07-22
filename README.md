@@ -47,9 +47,13 @@ of this config file. Example:
 client-id: "xxxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 client-secret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 redirect-url: "urn:ietf:wg:oauth:2.0:oob"
-scopes: 
+pam-scopes: 
     - "email"
     - "openid"
+nss-scopes:
+    - "https://graph.microsoft.com/.default"
+    - "user.read.all"
+    - "group.read.all"
 tenant-id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 o365-domain: "%s@example.org"
 createuser: true

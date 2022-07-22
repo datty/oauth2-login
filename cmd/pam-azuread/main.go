@@ -71,7 +71,7 @@ func pamAuthenticate(pamh *C.pam_handle_t, uid int, username string, argv []stri
 	pamLog("pam_oauth2: call AzureAD and request token")
 	result, err := app.AcquireTokenByUsernamePassword(
 		context.Background(),
-		config.Scopes,
+		config.PamScopes,
 		fmt.Sprintf(config.Domain, username),
 		password,
 	)

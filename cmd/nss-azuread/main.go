@@ -62,13 +62,12 @@ func (self LibNssOauth) oauth_init() (result confidential.AuthResult, err error)
 		log.Fatal(err)
 	}
 	app, err := confidential.New(config.ClientID, cred, confidential.WithAuthority("https://login.microsoftonline.com/"+config.TenantID), confidential.WithAccessor(cacheAccessor))
-	//app, err := confidential.New(config.ClientID, cred, confidential.WithAuthority("https://login.microsoftonline.com/"+config.TenantID))
 	if err != nil {
 		log.Fatal(err)
 	}
-	result, err = app.AcquireTokenSilent(context.Background(), config.Scopes)
+	result, err = app.AcquireTokenSilent(context.Background(), config.NssScopes)
 	if err != nil {
-		result, err = app.AcquireTokenByCredential(context.Background(), config.Scopes)
+		result, err = app.AcquireTokenByCredential(context.Background(), config.NssScopes)
 		if err != nil {
 			log.Fatal(err)
 		}
