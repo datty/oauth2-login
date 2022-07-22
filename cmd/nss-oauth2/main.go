@@ -27,14 +27,6 @@ func main() {}
 func init() {
 	// We set our implementation to "LibNssOauth", so that go-libnss will use the methods we create
 	nss.SetImpl(LibNssOauth{})
-
-	//Enable Debug Logging
-	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-	defer f.Close()
-	log.SetOutput(f)
 }
 
 // LibNssExternal creates a struct that implements LIBNSS stub methods.
@@ -43,8 +35,17 @@ type LibNssOauth struct{ nss.LIBNSS }
 var config *conf.Config
 
 func (self LibNssOauth) oauth_init() (result confidential.AuthResult, err error) {
-	//Load config vars
 
+	//Enable Debug Logging - REMOVE ME! ----------------
+	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
+	//Enable Debug Logging - REMOVE ME! ----------------
+
+	//Load config vars
 	if config == nil {
 		if config, err = conf.ReadConfig(); err != nil {
 			log.Println("unable to read configfile:", err)
