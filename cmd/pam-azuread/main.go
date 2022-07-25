@@ -109,7 +109,7 @@ func main() {
 
 // validateToken - Check if JWT token can be parsed as a valid token
 func validateToken(t string) bool {
-	token, err := jwt.ParseSigned(t)
+	_, err := jwt.ParseSigned(t)
 	if err != nil {
 		return false
 	}

@@ -127,7 +127,7 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 	_, err := passwd.Lookup(name)
 
 	//If User doesn't exist and we have createuser enabled...
-	if err != nil && config.CreateUser {
+	if config.CreateUser && err != nil {
 
 		//Get OAuth token
 		result, err := self.oauth_init()
@@ -246,7 +246,7 @@ func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) 
 			xx := value.(map[string]interface{})
 			//Check for group name match
 			if xx["displayName"] == name {
-				groupExists := true
+				groupExists = true
 			}
 		}
 		// create group if none exists
