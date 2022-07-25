@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/datty/pam-azuread/internal/conf"
+	"github.com/datty/pam-azuread/internal/group"
 	"github.com/datty/pam-azuread/internal/passwd"
 
 	"github.com/shirou/gopsutil/v3/process"
@@ -122,13 +123,24 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 // PasswdByName returns a single entry by name.
 func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd) {
 
-	//Get OAuth token
-	result, err := self.oauth_init()
-	log.Println("Test output %s", result)
+	//Initial local lookup
+	_, err := passwd.Lookup(name)
 
-	if config.CreateUser {
-		// create user if none exists
-		if _, err := passwd.Lookup(name); err != nil {
+	//If User doesn't exist and we have createuser enabled...
+	if err != nil && config.CreateUser {
+
+		//Get OAuth token
+		result, err := self.oauth_init()
+		log.Println("Test output %s", result)
+		if err != nil {
+			log.Println("Oauth Failed:", err)
+		}
+
+		// Azure User Lookup URL
+		graphUrl := fmt.Sprintf("v1.0/users/%s", fmt.Sprintf(config.Domain, name))
+
+		//If User is in Azure then create
+		if _, err := self.msgraph_req(result.AccessToken, graphUrl); err == nil {
 			useradd, err := exec.LookPath("/usr/sbin/useradd")
 
 			if err != nil {
@@ -204,8 +216,98 @@ func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
 
 // GroupByName returns a group, not managed here
 func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) {
-	// fmt.Printf("GroupByName %s\n", name)
-	return nss.StatusNotfound, nssStructs.Group{}
+
+	//Initial local lookup
+	_, err := group.Lookup(name)
+
+	//If User doesn't exist and we have creategroup enabled...
+	if err != nil && config.CreateGroup {
+
+		//Get OAuth token
+		result, err := self.oauth_init()
+		log.Println("Test output %s", result)
+		if err != nil {
+			log.Println("Oauth Failed:", err)
+		}
+
+		// Azure User Lookup URL
+		graphUrl := fmt.Sprintf("v1.0/groups")
+		//Pull all groups from Azure
+		json, err := self.msgraph_req(result.AccessToken, graphUrl)
+		if err != nil {
+			log.Println("Graph API call failed:", err)
+		}
+
+		//Set default fail for group var
+		groupExists := false
+
+		for _, value := range json["value"].([]interface{}) {
+			//Map value var to correct type
+			xx := value.(map[string]interface{})
+			//Check for group name match
+			if xx["displayName"] == name {
+				groupExists := true
+			}
+		}
+		// create group if none exists
+		if groupExists == true {
+			groupadd, err := exec.LookPath("/usr/sbin/groupadd")
+
+			if err != nil {
+				log.Println("groupadd command was not found:", err)
+				return nss.StatusNotfound, nssStructs.Group{}
+			}
+
+			//args := []string{"-g", gid, name}
+			args := []string{name}
+			commandline := groupadd + " " + strings.Join(args, " ")
+
+			// 'useradd' will call getpwnam() first. We must check if we get here
+			// from this call to avoid a recursion.
+			processes, err := process.Processes()
+
+			if err != nil {
+				log.Println("unable to read process list:", err)
+				return nss.StatusNotfound, nssStructs.Group{}
+			}
+
+			for _, p := range processes {
+				pcmd, err := p.Cmdline()
+				if err != nil {
+					log.Println("unable to read process list:", err)
+					return nss.StatusNotfound, nssStructs.Group{}
+				}
+
+				if pcmd == commandline {
+					// 'groupadd' already running
+					return nss.StatusNotfound, nssStructs.Group{}
+				}
+			}
+
+			cmd := exec.Command(groupadd, args...)
+			out, err := cmd.CombinedOutput()
+
+			if err != nil {
+				log.Println("unable to create group output:", string(out), err)
+				return nss.StatusNotfound, nssStructs.Group{}
+			}
+		}
+	}
+
+	// group should have been created by now
+	osgroup, err := group.Lookup(name)
+	if err != nil {
+		log.Println("group", name, "not found in group:", err)
+		return nss.StatusNotfound, nssStructs.Group{}
+	}
+
+	group := nssStructs.Group{
+		Groupname: osgroup.Groupname,
+		Password:  "x",
+		GID:       osgroup.GID,
+		Members:   osgroup.Members,
+	}
+	return nss.StatusSuccess, group
 }
 
 // GroupBuGid retusn group by id, not managed here

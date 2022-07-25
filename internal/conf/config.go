@@ -23,6 +23,7 @@ type Config struct {
 	// AllowedRoles are OS level groups which must be present on the OS before
 	AllowedRoles []string `yaml:"allowed-roles"`
 	CreateUser   bool     `yaml:"createuser"`
+	CreateGroup  bool     `yaml:"creategroup"`
 }
 
 // ReadConfig

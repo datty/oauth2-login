@@ -15,3 +15,4 @@ sufficient-roles:
 allowed-roles: 
     - "cumulus"
 createuser: true
+creategroup: true
