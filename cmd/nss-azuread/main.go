@@ -2,7 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -79,6 +83,37 @@ func (self LibNssOauth) oauth_init() (result confidential.AuthResult, err error)
 
 }
 
+//Request against Microsoft Graph API using token, return JSON
+func (self LibNssOauth) msgraph_req(t string, req string) (output map[string]interface{}, err error) {
+
+	requestURL := fmt.Sprintf("https://graph.microsoft.com:443/%s", req)
+	token := fmt.Sprintf("Bearer %s", t)
+
+	request, err := http.NewRequest(http.MethodGet, requestURL, nil)
+	request.Header.Set("Authorization", token)
+	if err != nil {
+		return output, err
+	}
+	res, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return output, err
+	}
+	//Close output I guess???
+	if res.Body != nil {
+		defer res.Body.Close()
+	}
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	jsonErr := json.Unmarshal([]byte(body), &output)
+	if jsonErr != nil {
+		log.Fatal(err)
+	}
+	return output, nil
+}
+
 // PasswdAll will populate all entries for libnss
 func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 	return nss.StatusSuccess, []nssStructs.Passwd{}
@@ -89,10 +124,6 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 
 	//Get OAuth token
 	result, err := self.oauth_init()
-	if err != nil {
-		log.Println("username", name, "did not match 'name-regex':", err)
-		return nss.StatusNotfound, nssStructs.Passwd{}
-	}
 	log.Println("Test output %s", result)
 
 	if config.CreateUser {
