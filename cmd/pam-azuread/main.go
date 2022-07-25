@@ -1,5 +1,5 @@
 // Copyright © 2017 Shinichi MOTOKI
-// Copyright © 2017 Oliver Smith
+// Copyright © 2022 Oliver Smith
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -80,28 +80,15 @@ func pamAuthenticate(pamh *C.pam_handle_t, uid int, username string, argv []stri
 		return PAM_AUTH_ERR
 	}
 
-	// check here is token vaild
-	if len(result.AccessToken) == 0 {
+	// check token is valid
+	if validateToken(result.AccessToken) {
+		pamLog("pam_oauth2: oauth2 authentication succeeded")
+		return PAM_SUCCESS
+	} else {
 		pamLog("pam_oauth2: oauth2 authentication failed")
 		return PAM_AUTH_ERR
 	}
 
-	// check group for authentication is in token
-	//roles, err := validateClaims(oauth2Token.AccessToken, config.SufficientRoles)
-	//if err != nil {
-	//		pamLog("error validate claims: %v", err)
-	//		return PAM_AUTH_ERR
-	//	}
-
-	// Filter out all not allowed roles comming from OIDC
-	//	groups := []string{}
-	//	for _, r := range roles {
-	//		for _, ar := range config.AllowedRoles {
-	//			if r == ar {
-	//				groups = append(groups, r)
-	//			}
-	//		}
-	//	}
 	//	if config.CreateUser {
 	//		err = modifyUser(username, groups)
 	//		if err != nil {
@@ -118,6 +105,15 @@ func pamAuthenticate(pamh *C.pam_handle_t, uid int, username string, argv []stri
 // go build -buildmode=c-shared
 func main() {
 
+}
+
+// validateToken - Check if JWT token can be parsed as a valid token
+func validateToken(t string) bool {
+	token, err := jwt.ParseSigned(t)
+	if err != nil {
+		return false
+	}
+	return true
 }
 
 // myClaim define token struct
