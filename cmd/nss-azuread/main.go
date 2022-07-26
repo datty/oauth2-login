@@ -41,15 +41,6 @@ var config *conf.Config
 
 func (self LibNssOauth) oauth_init() (result confidential.AuthResult, err error) {
 
-	//Enable Debug Logging - REMOVE ME! ----------------
-	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-	defer f.Close()
-	log.SetOutput(f)
-	//Enable Debug Logging - REMOVE ME! ----------------
-
 	//Load config vars
 	if config == nil {
 		if config, err = conf.ReadConfig(); err != nil {
@@ -99,6 +90,10 @@ func (self LibNssOauth) msgraph_req(t string, req string) (output map[string]int
 	if err != nil {
 		return output, err
 	}
+	//Check if valid response
+	if res.StatusCode != 200 {
+		return output, fmt.Errorf("%v", res.StatusCode)
+	}
 	//Close output I guess???
 	if res.Body != nil {
 		defer res.Body.Close()
@@ -122,19 +117,28 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 
 // PasswdByName returns a single entry by name.
 func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd) {
+	
+	//Enable Debug Logging - REMOVE ME! ----------------
+	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
+	//Enable Debug Logging - REMOVE ME! ----------------
+
+	//Get OAuth token
+	result, err := self.oauth_init()
+	log.Println("Test output %s", result)
+	if err != nil {
+		log.Println("Oauth Failed:", err)
+	}
 
 	//Initial local lookup
-	_, err := passwd.Lookup(name)
+	_, err = passwd.Lookup(name)
 
 	//If User doesn't exist and we have createuser enabled...
 	if config.CreateUser && err != nil {
-
-		//Get OAuth token
-		result, err := self.oauth_init()
-		log.Println("Test output %s", result)
-		if err != nil {
-			log.Println("Oauth Failed:", err)
-		}
 
 		// Azure User Lookup URL
 		graphUrl := fmt.Sprintf("v1.0/users/%s", fmt.Sprintf(config.Domain, name))
@@ -211,6 +215,7 @@ func (self LibNssOauth) PasswdByUid(uid uint) (nss.Status, nssStructs.Passwd) {
 // GroupAll returns all groups, not managed here
 func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
 	// fmt.Printf("GroupAll\n")
+	
 	return nss.StatusSuccess, []nssStructs.Group{}
 }
 
@@ -220,15 +225,15 @@ func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) 
 	//Initial local lookup
 	_, err := group.Lookup(name)
 
+	//Get OAuth token
+	result, err := self.oauth_init()
+	log.Println("Test output %s", result)
+	if err != nil {
+		log.Println("Oauth Failed:", err)
+	}
+
 	//If User doesn't exist and we have creategroup enabled...
 	if err != nil && config.CreateGroup {
-
-		//Get OAuth token
-		result, err := self.oauth_init()
-		log.Println("Test output %s", result)
-		if err != nil {
-			log.Println("Oauth Failed:", err)
-		}
 
 		// Azure User Lookup URL
 		graphUrl := fmt.Sprintf("v1.0/groups")
