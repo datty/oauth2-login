@@ -16,3 +16,7 @@ allowed-roles:
     - "cumulus"
 createuser: true
 creategroup: true
+custom-security-attributes: true
+attribute-set: "RFC2307"
+user-attribute-name: "UID"
+

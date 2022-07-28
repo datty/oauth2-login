@@ -117,7 +117,7 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 
 // PasswdByName returns a single entry by name.
 func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd) {
-	
+
 	//Enable Debug Logging - REMOVE ME! ----------------
 	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
@@ -141,18 +141,24 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 	if config.CreateUser && err != nil {
 
 		// Azure User Lookup URL
-		graphUrl := fmt.Sprintf("v1.0/users/%s", fmt.Sprintf(config.Domain, name))
+		graphUrl := fmt.Sprintf("v1.0/users/%s?$select=id,displayName,customSecurityAttributes", fmt.Sprintf(config.Domain, name))
 
 		//If User is in Azure then create
 		if _, err := self.msgraph_req(result.AccessToken, graphUrl); err == nil {
-			useradd, err := exec.LookPath("/usr/sbin/useradd")
 
+			useradd, err := exec.LookPath("/usr/sbin/useradd")
 			if err != nil {
 				log.Println("useradd command was not found:", err)
 				return nss.StatusNotfound, nssStructs.Passwd{}
 			}
 
-			args := []string{"-m", "-s", "/bin/bash", "-c", app, name}
+			if config.UseSecAttributes {
+				//temp hack
+				uid := "10025"
+				args := []string{"-m", "-s", "/bin/bash", "-c", app, "-u", uid, name}
+			} else {
+				args := []string{"-m", "-s", "/bin/bash", "-c", app, name}
+			}
 			commandline := useradd + " " + strings.Join(args, " ")
 
 			// 'useradd' will call getpwnam() first. We must check if we get here
@@ -212,11 +218,29 @@ func (self LibNssOauth) PasswdByUid(uid uint) (nss.Status, nssStructs.Passwd) {
 	return nss.StatusNotfound, nssStructs.Passwd{}
 }
 
-// GroupAll returns all groups, not managed here
+// GroupAll returns all groups
 func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
-	// fmt.Printf("GroupAll\n")
-	
-	return nss.StatusSuccess, []nssStructs.Group{}
+	//Get OAuth token
+	result, err := self.oauth_init()
+	log.Println("Test output %s", result)
+	if err != nil {
+		log.Println("Oauth Failed:", err)
+	}
+
+	// Azure User Lookup URL
+	graphUrl := fmt.Sprintf("v1.0/groups")
+	//Pull all groups from Azure
+	json, err := self.msgraph_req(result.AccessToken, graphUrl)
+	if err != nil {
+		log.Println("Graph API call failed:", err)
+	}
+	for _, value := range json["value"].([]interface{}) {
+		//Map value var to correct type
+		xx := value.(map[string]interface{})
+	}
+	//Disable for now. Not a hard requirement.
+	//return nss.StatusSuccess, []nssStructs.Group{}
+	return nss.StatusNotfound, []nssStructs.Group{}
 }
 
 // GroupByName returns a group, not managed here
