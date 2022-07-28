@@ -30,8 +30,6 @@ import (
 
 	"fmt"
 	"log/syslog"
-	"os/exec"
-	"os/user"
 
 	"github.com/datty/pam-azuread/internal/conf"
 
@@ -64,11 +62,12 @@ func pamAuthenticate(pamh *C.pam_handle_t, uid int, username string, argv []stri
 	//Open AzureAD
 	app, err := public.New(config.ClientID, public.WithAuthority("https://login.microsoftonline.com/"+config.TenantID))
 	if err != nil {
-		panic(err)
+		pamLog("Error opening AzureAD connection: %v", err)
+		return PAM_OPEN_ERR
 	}
 
 	//Auth with Username/Password
-	pamLog("pam_oauth2: call AzureAD and request token")
+	pamLog("Attempting token auth for user: %s", fmt.Sprintf(config.Domain, username))
 	result, err := app.AcquireTokenByUsernamePassword(
 		context.Background(),
 		config.PamScopes,
@@ -76,29 +75,19 @@ func pamAuthenticate(pamh *C.pam_handle_t, uid int, username string, argv []stri
 		password,
 	)
 	if err != nil {
-		pamLog("pam_oauth2: oauth2 authentication failed: %v", err)
+		pamLog("AzureAD authentication failed for user: %s. Error: %v", fmt.Sprintf(config.Domain, username), err)
 		return PAM_AUTH_ERR
 	}
 
 	// check token is valid
 	if validateToken(result.AccessToken) {
-		pamLog("pam_oauth2: oauth2 authentication succeeded")
+		pamLog("AzureAD authentication succeeded for user: %s", fmt.Sprintf(config.Domain, username))
 		return PAM_SUCCESS
 	} else {
-		pamLog("pam_oauth2: oauth2 authentication failed")
+		pamLog("AzureAD token invalid, authentication failed for user: %s", fmt.Sprintf(config.Domain, username))
 		return PAM_AUTH_ERR
 	}
 
-	//	if config.CreateUser {
-	//		err = modifyUser(username, groups)
-	//		if err != nil {
-	//			pamLog("unable to add groups: %v", err)
-	//			return PAM_AUTH_ERR
-	//		}
-	//	}
-	//
-	pamLog("pam_oauth2: oauth2 authentication succeeded")
-	return PAM_SUCCESS
 }
 
 // main is for testing purposes only, the PAM module has to be built with:
@@ -114,61 +103,4 @@ func validateToken(t string) bool {
 		return false
 	}
 	return true
-}
-
-// myClaim define token struct
-type myClaim struct {
-	jwt.Claims
-	Roles []string `json:"roles,omitempty"`
-}
-
-// validateClaims check role fom config sufficientRoles is in token roles claim
-func validateClaims(t string, sufficientRoles []string) ([]string, error) {
-	token, err := jwt.ParseSigned(t)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing token: %w", err)
-	}
-
-	claims := myClaim{}
-	if err := token.UnsafeClaimsWithoutVerification(&claims); err != nil {
-		return nil, fmt.Errorf("unable to extract claims from token: %w", err)
-	}
-	if len(sufficientRoles) > 0 {
-		for _, role := range claims.Roles {
-			for _, sr := range sufficientRoles {
-				if role == sr {
-					pamLog("validateClaims access granted role " + role + " is in token")
-					return claims.Roles, nil
-				}
-			}
-		}
-		return nil, fmt.Errorf("role: %s not found", sufficientRoles)
-	}
-	return claims.Roles, nil
-}
-
-// modifyUser add missing groups to the user
-func modifyUser(username string, groups []string) error {
-	_, err := user.Lookup(username)
-	if err != nil && err.Error() != user.UnknownUserError(username).Error() {
-		return fmt.Errorf("unable to lookup user %w", err)
-	}
-
-	if len(groups) > 0 {
-		usermod, err := exec.LookPath("/usr/sbin/usermod")
-
-		if err != nil {
-			return fmt.Errorf("usermod command was not found %w", err)
-		}
-
-		args := []string{"-G"}
-		args = append(args, groups...)
-		args = append(args, username)
-		cmd := exec.Command(usermod, args...)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("unable to modify user output:%s %w", string(out), err)
-		}
-	}
-	return nil
 }
