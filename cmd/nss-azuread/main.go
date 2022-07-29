@@ -12,8 +12,6 @@ import (
 	"strings"
 
 	"github.com/datty/pam-azuread/internal/conf"
-	"github.com/datty/pam-azuread/internal/group"
-	"github.com/datty/pam-azuread/internal/passwd"
 
 	"github.com/shirou/gopsutil/v3/process"
 
@@ -112,6 +110,23 @@ func (self LibNssOauth) msgraph_req(t string, req string) (output map[string]int
 
 // PasswdAll will populate all entries for libnss
 func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
+
+	//Enable Debug Logging - REMOVE ME! ----------------
+	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
+	//Enable Debug Logging - REMOVE ME! ----------------
+
+	//Get OAuth token
+	result, err := self.oauth_init()
+	log.Println("Test output %s", result)
+	if err != nil {
+		log.Println("Oauth Failed:", err)
+	}
+
 	return nss.StatusSuccess, []nssStructs.Passwd{}
 }
 
@@ -134,83 +149,16 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 		log.Println("Oauth Failed:", err)
 	}
 
-	//Initial local lookup
-	_, err = passwd.Lookup(name)
+	// Azure User Lookup - Disable for now.
+	//getUserQuery := fmt.Sprintf("v1.0/users/%s?$select=id,displayName,customSecurityAttributes", fmt.Sprintf(config.Domain, name))
+	//jsonOutput, err := self.msgraph_req(result.AccessToken, getUserQuery)
 
-	//If User doesn't exist and we have createuser enabled...
-	if config.CreateUser && err != nil {
-
-		// Azure User Lookup URL
-		graphUrl := fmt.Sprintf("v1.0/users/%s?$select=id,displayName,customSecurityAttributes", fmt.Sprintf(config.Domain, name))
-
-		//If User is in Azure then create
-		if _, err := self.msgraph_req(result.AccessToken, graphUrl); err == nil {
-
-			useradd, err := exec.LookPath("/usr/sbin/useradd")
-			if err != nil {
-				log.Println("useradd command was not found:", err)
-				return nss.StatusNotfound, nssStructs.Passwd{}
-			}
-
-			if config.UseSecAttributes {
-				//temp hack
-				uid := "10025"
-				args := []string{"-m", "-s", "/bin/bash", "-c", app, "-u", uid, name}
-			} else {
-				args := []string{"-m", "-s", "/bin/bash", "-c", app, name}
-			}
-			commandline := useradd + " " + strings.Join(args, " ")
-
-			// 'useradd' will call getpwnam() first. We must check if we get here
-			// from this call to avoid a recursion.
-			processes, err := process.Processes()
-
-			if err != nil {
-				log.Println("unable to read process list:", err)
-				return nss.StatusNotfound, nssStructs.Passwd{}
-			}
-
-			for _, p := range processes {
-				pcmd, err := p.Cmdline()
-				if err != nil {
-					log.Println("unable to read process list:", err)
-					return nss.StatusNotfound, nssStructs.Passwd{}
-				}
-
-				if pcmd == commandline {
-					// 'useradd' already running
-					return nss.StatusNotfound, nssStructs.Passwd{}
-				}
-			}
-
-			cmd := exec.Command(useradd, args...)
-			out, err := cmd.CombinedOutput()
-
-			if err != nil {
-				log.Println("unable to create user output:", string(out), err)
-				return nss.StatusNotfound, nssStructs.Passwd{}
-			}
-		}
-	}
-
-	// user should have been created by now
-	osuser, err := passwd.Lookup(name)
 	if err != nil {
-		log.Println("user", name, "not found in passwd:", err)
+		log.Println("unable to create user output:", err)
 		return nss.StatusNotfound, nssStructs.Passwd{}
 	}
-
-	passwd := nssStructs.Passwd{
-		Username: osuser.Name,
-		Password: "*",
-		UID:      osuser.UID,
-		GID:      osuser.GID,
-		Shell:    osuser.Shell,
-		Dir:      osuser.HomeDir,
-		Gecos:    osuser.Gecos,
-	}
-
-	return nss.StatusSuccess, passwd
+	//Disable function for now.
+	return nss.StatusNotfound, nssStructs.Passwd{}
 }
 
 // PasswdByUid returns a single entry by uid, not managed here
@@ -228,16 +176,16 @@ func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
 	}
 
 	// Azure User Lookup URL
-	graphUrl := fmt.Sprintf("v1.0/groups")
+	//graphUrl := fmt.Sprintf("v1.0/groups")
 	//Pull all groups from Azure
-	json, err := self.msgraph_req(result.AccessToken, graphUrl)
+	//json, err := self.msgraph_req(result.AccessToken, graphUrl)
 	if err != nil {
 		log.Println("Graph API call failed:", err)
 	}
-	for _, value := range json["value"].([]interface{}) {
-		//Map value var to correct type
-		xx := value.(map[string]interface{})
-	}
+	//for _, value := range json["value"].([]interface{}) {
+	//Map value var to correct type
+	//	xx := value.(map[string]interface{})
+	//}
 	//Disable for now. Not a hard requirement.
 	//return nss.StatusSuccess, []nssStructs.Group{}
 	return nss.StatusNotfound, []nssStructs.Group{}
@@ -245,9 +193,6 @@ func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
 
 // GroupByName returns a group, not managed here
 func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) {
-
-	//Initial local lookup
-	_, err := group.Lookup(name)
 
 	//Get OAuth token
 	result, err := self.oauth_init()
@@ -323,20 +268,8 @@ func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) 
 		}
 	}
 
-	// group should have been created by now
-	osgroup, err := group.Lookup(name)
-	if err != nil {
-		log.Println("group", name, "not found in group:", err)
-		return nss.StatusNotfound, nssStructs.Group{}
-	}
-
-	group := nssStructs.Group{
-		Groupname: osgroup.Groupname,
-		Password:  "x",
-		GID:       osgroup.GID,
-		Members:   osgroup.Members,
-	}
-	return nss.StatusSuccess, group
+	//disable for now.
+	return nss.StatusNotfound, nssStructs.Group{}
 }
 
 // GroupBuGid retusn group by id, not managed here
