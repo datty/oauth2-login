@@ -22,6 +22,7 @@ type Config struct {
 	AttributeSet     string `yaml:"attribute-set"`
 	UserUIDAttribute string `yaml:"user-uid-attribute-name"`
 	UserGIDAttribute string `yaml:"user-gid-attribute-name"`
+	UserDefaultGID   uint   `yaml:"user-gid-default"`
 	//Should not need to change these...
 	PamScopes []string `yaml:"pam-scopes"`
 	NssScopes []string `yaml:"nss-scopes"`

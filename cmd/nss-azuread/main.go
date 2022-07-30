@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/datty/pam-azuread/internal/conf"
@@ -106,6 +107,61 @@ func (self LibNssOauth) msgraph_req(t string, req string) (output map[string]int
 	return output, nil
 }
 
+func (self LibNssOauth) GetUnusedUID(t string) (output uint, err error) {
+
+	//Build all users query. Filters users without licences and only returns required fields.
+	getUIDQuery := "/users?$filter=assignedLicenses/$count+ne+0&$count=true&$select="
+	if config.UseSecAttributes {
+		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
+		getUIDQuery = "beta" + getUIDQuery + "customSecurityAttributes"
+		log.Println("Query: %s", getUIDQuery) //DEBUG
+	} else {
+		getUIDQuery = "v1.0" + getUIDQuery + config.UserUIDAttribute
+		log.Println("Query: %s", getUIDQuery) //DEBUG
+	}
+	jsonOutput, err := self.msgraph_req(t, getUIDQuery)
+	if err != nil {
+		log.Println("MSGraph request failed:", err)
+		return 0, err
+	}
+
+	//Create empty uidlist
+	uidList := []int{}
+
+	//Collect existing uids
+	for _, userResult := range jsonOutput["value"].([]interface{}) {
+		//Map value var to correct type to allow for access
+		xx := userResult.(map[string]interface{})
+
+		//Get UIDs
+		if config.UseSecAttributes {
+			//Set variables ready...not sure if there's a better way to handle this.
+			var userSecAttributes map[string]interface{}
+			var attributeSet map[string]interface{}
+			//Check whether CSA-SA exists
+			if xx["customSecurityAttributes"] != nil {
+				userSecAttributes = xx["customSecurityAttributes"].(map[string]interface{})
+				if userSecAttributes != nil {
+					attributeSet = userSecAttributes[config.AttributeSet].(map[string]interface{})
+					if attributeSet[config.UserUIDAttribute] != nil {
+						//UID exists
+						uidList = append(uidList, int(attributeSet[config.UserUIDAttribute].(float64)))
+					}
+				}
+			}
+		} else {
+			if xx[config.UserUIDAttribute] != nil {
+				uidList = append(uidList, int(xx[config.UserUIDAttribute].(float64)))
+			}
+		}
+	}
+	//Sort UIDs backwards
+	sort.Sort(sort.Reverse(sort.IntSlice(uidList)))
+	newUID := uint(uidList[0] + 1)
+
+	return newUID, nil
+}
+
 // PasswdAll will populate all entries for libnss
 func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 
@@ -126,7 +182,7 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 		return nss.StatusUnavail, []nssStructs.Passwd{}
 	}
 
-	//Build all users query. Filters users without licences.
+	//Build all users query. Filters users without licences and only returns required fields.
 	getUserQuery := "/users?$filter=assignedLicenses/$count+ne+0&$count=true&$select=id,userPrincipalName"
 	if config.UseSecAttributes {
 		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
@@ -149,10 +205,13 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 		//Create temporary struct for user info
 		tempUser := nssStructs.Passwd{}
 		//Create error capture val
-		userErr := false
+		userUIDErr := true
 
 		//Map value var to correct type to allow for access
 		xx := userResult.(map[string]interface{})
+
+		//Set default GID
+		tempUser.GID = config.UserDefaultGID
 
 		//Get UID/GID
 		if config.UseSecAttributes {
@@ -164,39 +223,27 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 				userSecAttributes = xx["customSecurityAttributes"].(map[string]interface{})
 				if userSecAttributes != nil {
 					attributeSet = userSecAttributes[config.AttributeSet].(map[string]interface{})
+					//Get UID/GID from CSA-AS
+					if attributeSet[config.UserUIDAttribute] != nil {
+						//UID exists
+						tempUser.UID = uint(attributeSet[config.UserUIDAttribute].(float64))
+						userUIDErr = false
+					}
+					if attributeSet[config.UserGIDAttribute] != nil {
+						//GID exists
+						tempUser.GID = uint(attributeSet[config.UserGIDAttribute].(float64))
+					}
 				} else {
-					log.Println("No CSA-AS")
-					userErr = true
+					log.Println("No CSA-AS") //DEBUG
 				}
-			} else {
-				log.Println("No CSA")
-				userErr = true
-			}
-			if attributeSet[config.UserUIDAttribute] != nil {
-				//UID exists
-				tempUser.UID = uint(attributeSet[config.UserUIDAttribute].(float64))
-			} else {
-				//Do UID generation magic - but not yet
-				userErr = true
-			}
-			if attributeSet[config.UserGIDAttribute] != nil {
-				//GID exists
-				tempUser.GID = uint(attributeSet[config.UserGIDAttribute].(float64))
-			} else {
-				//Set GID to 100 if unset
-				tempUser.GID = 100
 			}
 		} else {
 			if xx[config.UserUIDAttribute] != nil {
 				tempUser.UID = xx[config.UserUIDAttribute].(uint)
-			} else {
-				userErr = true
+				userUIDErr = false
 			}
 			if xx[config.UserGIDAttribute] != nil {
 				tempUser.GID = xx[config.UserGIDAttribute].(uint)
-			} else {
-				//Set GID to 100 if unset
-				tempUser.GID = 100
 			}
 		}
 		//Strip domain from UPN
@@ -208,9 +255,14 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 		tempUser.Gecos = app
 		tempUser.Dir = fmt.Sprintf("/home/%s", user)
 		tempUser.Shell = "/bin/bash"
-		if userErr == false {
-			passwdResult = append(passwdResult, tempUser)
+
+		//Add this user to result if no errors flagged
+		if userUIDErr == true {
+			//Do the magic and set UID
+			tempUser.UID, err = self.GetUnusedUID(result.AccessToken)
+			log.Println("New UID: %s", tempUser.UID)
 		}
+		passwdResult = append(passwdResult, tempUser)
 	}
 
 	return nss.StatusSuccess, passwdResult
