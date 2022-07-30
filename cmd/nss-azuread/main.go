@@ -8,12 +8,9 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/datty/pam-azuread/internal/conf"
-
-	"github.com/shirou/gopsutil/v3/process"
 
 	nss "github.com/protosam/go-libnss"
 	nssStructs "github.com/protosam/go-libnss/structs"
@@ -81,6 +78,7 @@ func (self LibNssOauth) msgraph_req(t string, req string) (output map[string]int
 
 	request, err := http.NewRequest(http.MethodGet, requestURL, nil)
 	request.Header.Set("Authorization", token)
+	request.Header.Set("ConsistencyLevel", "eventual")
 	if err != nil {
 		return output, err
 	}
@@ -125,9 +123,97 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 	log.Println("Test output %s", result)
 	if err != nil {
 		log.Println("Oauth Failed:", err)
+		return nss.StatusUnavail, []nssStructs.Passwd{}
 	}
 
-	return nss.StatusSuccess, []nssStructs.Passwd{}
+	//Build all users query. Filters users without licences.
+	getUserQuery := "/users?$filter=assignedLicenses/$count+ne+0&$count=true&$select=id,userPrincipalName"
+	if config.UseSecAttributes {
+		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
+		getUserQuery = "beta" + getUserQuery + ",customSecurityAttributes"
+		log.Println("Query: %s", getUserQuery) //DEBUG
+	} else {
+		getUserQuery = "v1.0" + getUserQuery + "," + config.UserUIDAttribute + "," + config.UserGIDAttribute
+		log.Println("Query: %s", getUserQuery) //DEBUG
+	}
+	jsonOutput, err := self.msgraph_req(result.AccessToken, getUserQuery)
+	if err != nil {
+		log.Println("MSGraph request failed:", err)
+		return nss.StatusUnavail, []nssStructs.Passwd{}
+	}
+
+	//Open Slice/Struct for result
+	passwdResult := []nssStructs.Passwd{}
+
+	for _, userResult := range jsonOutput["value"].([]interface{}) {
+		//Create temporary struct for user info
+		tempUser := nssStructs.Passwd{}
+		//Create error capture val
+		userErr := false
+
+		//Map value var to correct type to allow for access
+		xx := userResult.(map[string]interface{})
+
+		//Get UID/GID
+		if config.UseSecAttributes {
+			//Set variables ready...not sure if there's a better way to handle this.
+			var userSecAttributes map[string]interface{}
+			var attributeSet map[string]interface{}
+			//Check whether CSA exists
+			if xx["customSecurityAttributes"] != nil {
+				userSecAttributes = xx["customSecurityAttributes"].(map[string]interface{})
+				if userSecAttributes != nil {
+					attributeSet = userSecAttributes[config.AttributeSet].(map[string]interface{})
+				} else {
+					log.Println("No CSA-AS")
+					userErr = true
+				}
+			} else {
+				log.Println("No CSA")
+				userErr = true
+			}
+			if attributeSet[config.UserUIDAttribute] != nil {
+				//UID exists
+				tempUser.UID = uint(attributeSet[config.UserUIDAttribute].(float64))
+			} else {
+				//Do UID generation magic - but not yet
+				userErr = true
+			}
+			if attributeSet[config.UserGIDAttribute] != nil {
+				//GID exists
+				tempUser.GID = uint(attributeSet[config.UserGIDAttribute].(float64))
+			} else {
+				//Set GID to 100 if unset
+				tempUser.GID = 100
+			}
+		} else {
+			if xx[config.UserUIDAttribute] != nil {
+				tempUser.UID = xx[config.UserUIDAttribute].(uint)
+			} else {
+				userErr = true
+			}
+			if xx[config.UserGIDAttribute] != nil {
+				tempUser.GID = xx[config.UserGIDAttribute].(uint)
+			} else {
+				//Set GID to 100 if unset
+				tempUser.GID = 100
+			}
+		}
+		//Strip domain from UPN
+		user := strings.Split(xx["userPrincipalName"].(string), "@")[0]
+
+		//Set user info
+		tempUser.Username = user
+		tempUser.Password = "x"
+		tempUser.Gecos = app
+		tempUser.Dir = fmt.Sprintf("/home/%s", user)
+		tempUser.Shell = "/bin/bash"
+		if userErr == false {
+			passwdResult = append(passwdResult, tempUser)
+		}
+	}
+
+	return nss.StatusSuccess, passwdResult
 }
 
 // PasswdByName returns a single entry by name.
@@ -193,80 +279,6 @@ func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
 
 // GroupByName returns a group, not managed here
 func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) {
-
-	//Get OAuth token
-	result, err := self.oauth_init()
-	log.Println("Test output %s", result)
-	if err != nil {
-		log.Println("Oauth Failed:", err)
-	}
-
-	//If User doesn't exist and we have creategroup enabled...
-	if err != nil && config.CreateGroup {
-
-		// Azure User Lookup URL
-		graphUrl := fmt.Sprintf("v1.0/groups")
-		//Pull all groups from Azure
-		json, err := self.msgraph_req(result.AccessToken, graphUrl)
-		if err != nil {
-			log.Println("Graph API call failed:", err)
-		}
-
-		//Set default fail for group var
-		groupExists := false
-
-		for _, value := range json["value"].([]interface{}) {
-			//Map value var to correct type
-			xx := value.(map[string]interface{})
-			//Check for group name match
-			if xx["displayName"] == name {
-				groupExists = true
-			}
-		}
-		// create group if none exists
-		if groupExists == true {
-			groupadd, err := exec.LookPath("/usr/sbin/groupadd")
-
-			if err != nil {
-				log.Println("groupadd command was not found:", err)
-				return nss.StatusNotfound, nssStructs.Group{}
-			}
-
-			//args := []string{"-g", gid, name}
-			args := []string{name}
-			commandline := groupadd + " " + strings.Join(args, " ")
-
-			// 'useradd' will call getpwnam() first. We must check if we get here
-			// from this call to avoid a recursion.
-			processes, err := process.Processes()
-
-			if err != nil {
-				log.Println("unable to read process list:", err)
-				return nss.StatusNotfound, nssStructs.Group{}
-			}
-
-			for _, p := range processes {
-				pcmd, err := p.Cmdline()
-				if err != nil {
-					log.Println("unable to read process list:", err)
-					return nss.StatusNotfound, nssStructs.Group{}
-				}
-
-				if pcmd == commandline {
-					// 'groupadd' already running
-					return nss.StatusNotfound, nssStructs.Group{}
-				}
-			}
-
-			cmd := exec.Command(groupadd, args...)
-			out, err := cmd.CombinedOutput()
-
-			if err != nil {
-				log.Println("unable to create group output:", string(out), err)
-				return nss.StatusNotfound, nssStructs.Group{}
-			}
-		}
-	}
 
 	//disable for now.
 	return nss.StatusNotfound, nssStructs.Group{}

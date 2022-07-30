@@ -10,13 +10,8 @@ nss-scopes:
     - "openid"
 tenant-id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 o365-domain: "%s@example.org"
-sufficient-roles: 
-    - "serverAccess"
-allowed-roles: 
-    - "cumulus"
-createuser: true
-creategroup: true
 custom-security-attributes: true
 attribute-set: "RFC2307"
-user-attribute-name: "UID"
+user-uid-attribute-name: "UID"
+user-gid-attribute-name: "GID"
 
