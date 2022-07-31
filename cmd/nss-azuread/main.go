@@ -369,7 +369,7 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 	//Build all users query, only returns required fields
 	username := fmt.Sprintf(config.Domain, name)
 
-	getUserQuery := "/users/" + username + "?$select=id,userPrincipalName"
+	getUserQuery := "/users/" + username + "?$count=true&$select=id,userPrincipalName"
 	if config.UseSecAttributes {
 		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
 		getUserQuery = "beta" + getUserQuery + ",customSecurityAttributes"
@@ -481,6 +481,10 @@ func (self LibNssOauth) PasswdByUid(uid uint) (nss.Status, nssStructs.Passwd) {
 		return nss.StatusNotfound, nssStructs.Passwd{}
 	}
 
+	//Parse jsonOutput to something usable...
+	xx := jsonOutput["value"].([]interface{})
+	xy := xx[0].(map[string]interface{})
+
 	//Open Struct for result
 	passwdResult := nssStructs.Passwd{}
 
@@ -490,7 +494,7 @@ func (self LibNssOauth) PasswdByUid(uid uint) (nss.Status, nssStructs.Passwd) {
 	//Get UID/GID
 	if config.UseSecAttributes {
 		//Set variables ready...not sure if there's a better way to handle this.
-		userSecAttributes := jsonOutput["customSecurityAttributes"].(map[string]interface{})
+		userSecAttributes := xy["customSecurityAttributes"].(map[string]interface{})
 		attributeSet := userSecAttributes[config.AttributeSet].(map[string]interface{})
 		passwdResult.UID = uint(attributeSet[config.UserUIDAttribute].(float64))
 		if attributeSet[config.UserGIDAttribute] != nil {
@@ -498,13 +502,13 @@ func (self LibNssOauth) PasswdByUid(uid uint) (nss.Status, nssStructs.Passwd) {
 			passwdResult.GID = uint(attributeSet[config.UserGIDAttribute].(float64))
 		}
 	} else {
-		passwdResult.UID = jsonOutput[config.UserUIDAttribute].(uint)
-		if jsonOutput[config.UserGIDAttribute] != nil {
-			passwdResult.GID = jsonOutput[config.UserGIDAttribute].(uint)
+		passwdResult.UID = xy[config.UserUIDAttribute].(uint)
+		if xy[config.UserGIDAttribute] != nil {
+			passwdResult.GID = xy[config.UserGIDAttribute].(uint)
 		}
 	}
 	//Strip domain from UPN
-	user := strings.Split(jsonOutput["userPrincipalName"].(string), "@")[0]
+	user := strings.Split(xy["userPrincipalName"].(string), "@")[0]
 
 	//Set user info
 	passwdResult.Username = user
@@ -556,12 +560,98 @@ func (self LibNssOauth) GroupByGid(gid uint) (nss.Status, nssStructs.Group) {
 
 // ShadowAll return all shadow entries, not managed as no password are allowed here
 func (self LibNssOauth) ShadowAll() (nss.Status, []nssStructs.Shadow) {
-	// fmt.Printf("ShadowAll\n")
-	return nss.StatusSuccess, []nssStructs.Shadow{}
+
+	//Enable Debug Logging - REMOVE ME! ----------------
+	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
+	//Enable Debug Logging - REMOVE ME! ----------------
+
+	//Get OAuth token
+	result, err := self.oauth_init()
+	log.Println("Test output %s", result)
+	if err != nil {
+		log.Println("Oauth Failed:", err)
+		return nss.StatusUnavail, []nssStructs.Shadow{}
+	}
+
+	//Build all users query. Filters users without licences and only returns required fields.
+	getUserQuery := "v1.0/users?$filter=assignedLicenses/$count+ne+0&$count=true&$select=id,userPrincipalName,lastPasswordChangeDateTime"
+	log.Println("Query: %s", getUserQuery) //DEBUG
+
+	jsonOutput, err := self.msgraph_req(result.AccessToken, getUserQuery)
+	if err != nil {
+		log.Println("MSGraph request failed:", err)
+		return nss.StatusUnavail, []nssStructs.Shadow{}
+	}
+
+	//Open Slice/Struct for result
+	shadowResult := []nssStructs.Shadow{}
+
+	for _, userResult := range jsonOutput["value"].([]interface{}) {
+		//Create temporary struct for user info
+		tempUser := nssStructs.Shadow{}
+
+		//Map value var to correct type to allow for access
+		xx := userResult.(map[string]interface{})
+
+		//Strip domain from UPN
+		user := strings.Split(xx["userPrincipalName"].(string), "@")[0]
+
+		//Set user info
+		tempUser.Username = user
+		tempUser.Password = "*"
+		tempUser.PasswordWarn = 7
+		log.Printf("Last Password Change: %s", xx["lastPasswordChangeDateTime"].(string))
+		tempUser.LastChange = 19000
+		//tempUser.LastChange = xx["lastPasswordChangeDateTime"]
+		log.Println(tempUser)
+		shadowResult = append(shadowResult, tempUser)
+	}
+
+	return nss.StatusSuccess, shadowResult
 }
 
 // ShadowByName return shadow entry, not managed as no password are allowed here
 func (self LibNssOauth) ShadowByName(name string) (nss.Status, nssStructs.Shadow) {
-	// fmt.Printf("ShadowByName %s\n", name)
-	return nss.StatusNotfound, nssStructs.Shadow{}
+
+	//Enable Debug Logging - REMOVE ME! ----------------
+	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
+	//Enable Debug Logging - REMOVE ME! ----------------
+
+	//Get OAuth token
+	result, err := self.oauth_init()
+	log.Println("Test output %s", result)
+	if err != nil {
+		log.Println("Oauth Failed:", err)
+		return nss.StatusUnavail, nssStructs.Shadow{}
+	}
+
+	//Build all users query, only returns required fields
+	username := fmt.Sprintf(config.Domain, name)
+
+	getUserQuery := "v1.0/users/" + username + "?$count=true&$select=id,userPrincipalName,lastPasswordChangeDateTime"
+	jsonOutput, err := self.msgraph_req(result.AccessToken, getUserQuery)
+	if err != nil {
+		log.Println("MSGraph request failed:", err)
+		log.Println("HERE")
+		return nss.StatusNotfound, nssStructs.Shadow{}
+	}
+
+	//Strip domain from UPN
+	user := strings.Split(jsonOutput["userPrincipalName"].(string), "@")[0]
+
+	//tempUser.LastChange = xx["lastPasswordChangeDateTime"]
+	shadowResult := nssStructs.Shadow{Username: user, Password: "*", PasswordWarn: 7, LastChange: 19000, MinChange: 1, MaxChange: 365, ExpirationDate: 19500}
+	log.Println(shadowResult)
+
+	return nss.StatusSuccess, shadowResult
 }
