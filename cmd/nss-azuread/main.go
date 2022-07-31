@@ -363,18 +363,88 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 	log.Println("Test output %s", result)
 	if err != nil {
 		log.Println("Oauth Failed:", err)
+		return nss.StatusUnavail, nssStructs.Passwd{}
 	}
 
-	// Azure User Lookup - Disable for now.
-	//getUserQuery := fmt.Sprintf("v1.0/users/%s?$select=id,displayName,customSecurityAttributes", fmt.Sprintf(config.Domain, name))
-	//jsonOutput, err := self.msgraph_req(result.AccessToken, getUserQuery)
+	//Build all users query, only returns required fields
+	username := fmt.Sprintf(config.Domain, name)
 
+	getUserQuery := "/users/" + username + "?$select=id,userPrincipalName"
+	if config.UseSecAttributes {
+		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
+		getUserQuery = "beta" + getUserQuery + ",customSecurityAttributes"
+		log.Println("Query: %s", getUserQuery) //DEBUG
+	} else {
+		getUserQuery = "v1.0" + getUserQuery + "," + config.UserUIDAttribute + "," + config.UserGIDAttribute
+		log.Println("Query: %s", getUserQuery) //DEBUG
+	}
+	jsonOutput, err := self.msgraph_req(result.AccessToken, getUserQuery)
 	if err != nil {
-		log.Println("unable to create user output:", err)
+		log.Println("MSGraph request failed:", err)
 		return nss.StatusNotfound, nssStructs.Passwd{}
 	}
-	//Disable function for now.
-	return nss.StatusNotfound, nssStructs.Passwd{}
+
+	//Open Struct for result
+	passwdResult := nssStructs.Passwd{}
+	//Create error capture val
+	userUIDErr := true
+
+	//Set default GID
+	passwdResult.GID = config.UserDefaultGID
+
+	//Get UID/GID
+	if config.UseSecAttributes {
+		//Set variables ready...not sure if there's a better way to handle this.
+		var userSecAttributes map[string]interface{}
+		var attributeSet map[string]interface{}
+		//Check whether CSA exists
+		if jsonOutput["customSecurityAttributes"] != nil {
+			userSecAttributes = jsonOutput["customSecurityAttributes"].(map[string]interface{})
+			if userSecAttributes != nil {
+				attributeSet = userSecAttributes[config.AttributeSet].(map[string]interface{})
+				//Get UID/GID from CSA-AS
+				if attributeSet[config.UserUIDAttribute] != nil {
+					//UID exists
+					passwdResult.UID = uint(attributeSet[config.UserUIDAttribute].(float64))
+					userUIDErr = false
+				}
+				if attributeSet[config.UserGIDAttribute] != nil {
+					//GID exists
+					passwdResult.GID = uint(attributeSet[config.UserGIDAttribute].(float64))
+				}
+			} else {
+				log.Println("No CSA-AS") //DEBUG
+			}
+		}
+	} else {
+		if jsonOutput[config.UserUIDAttribute] != nil {
+			passwdResult.UID = jsonOutput[config.UserUIDAttribute].(uint)
+			userUIDErr = false
+		}
+		if jsonOutput[config.UserGIDAttribute] != nil {
+			passwdResult.GID = jsonOutput[config.UserGIDAttribute].(uint)
+		}
+	}
+	//Strip domain from UPN
+	user := strings.Split(jsonOutput["userPrincipalName"].(string), "@")[0]
+
+	//Set user info
+	passwdResult.Username = user
+	passwdResult.Password = "x"
+	passwdResult.Gecos = app
+	passwdResult.Dir = fmt.Sprintf("/home/%s", user)
+	passwdResult.Shell = "/bin/bash"
+
+	//Add this user to result if no errors flagged
+	if userUIDErr == true {
+		//Do the magic and set UID
+		passwdResult.UID, err = self.AutoSetUID(result.AccessToken, jsonOutput["id"].(string))
+		log.Println("UserID: %s", jsonOutput["id"].(string))              //DEBUG
+		log.Println("User: %s", jsonOutput["userPrincipalName"].(string)) //DEBUG
+		log.Println("New UID: %s", passwdResult.UID)                      //DEBUG
+	}
+
+	return nss.StatusSuccess, passwdResult
 }
 
 // PasswdByUid returns a single entry by uid, not managed here
