@@ -110,7 +110,7 @@ func (self LibNssOauth) msgraph_req(t string, req string) (output map[string]int
 	return output, nil
 }
 
-//Post request against Microsoft Graph API using token, return status
+//Patch request against Microsoft Graph API using token, return status
 func (self LibNssOauth) msgraph_update(t string, req string, val []byte) (status bool, err error) {
 	requestURL := fmt.Sprintf("https://graph.microsoft.com:443/%s", req)
 	token := fmt.Sprintf("Bearer %s", t)
@@ -183,7 +183,7 @@ func (self LibNssOauth) GetUnusedUID(t string) (output uint, err error) {
 	}
 	//Sort UIDs backwards
 	sort.Sort(sort.Reverse(sort.IntSlice(uidList)))
-	newUID := uint(uidList[0] + rand.Intn(10))
+	newUID := uint(uidList[0] + rand.Intn(20))
 
 	return newUID, nil
 }
