@@ -449,7 +449,71 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 
 // PasswdByUid returns a single entry by uid, not managed here
 func (self LibNssOauth) PasswdByUid(uid uint) (nss.Status, nssStructs.Passwd) {
-	return nss.StatusNotfound, nssStructs.Passwd{}
+	//Enable Debug Logging - REMOVE ME! ----------------
+	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
+	//Enable Debug Logging - REMOVE ME! ----------------
+
+	//Get OAuth token
+	result, err := self.oauth_init()
+	log.Println("Test output %s", result)
+	if err != nil {
+		log.Println("Oauth Failed:", err)
+		return nss.StatusUnavail, nssStructs.Passwd{}
+	}
+
+	getUserQuery := "/users/?$count=true&$select=id,userPrincipalName"
+	if config.UseSecAttributes {
+		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
+		getUserQuery = "beta" + getUserQuery + ",customSecurityAttributes&$filter=customSecurityAttributes/" + config.AttributeSet + "/" + config.UserUIDAttribute + "+eq+" + fmt.Sprintf("%d", uid)
+		log.Println("Query: %s", getUserQuery) //DEBUG
+	} else {
+		getUserQuery = "v1.0" + getUserQuery + "," + config.UserUIDAttribute + "," + config.UserGIDAttribute + "&$filter=" + config.UserUIDAttribute + "+eq+" + fmt.Sprintf("%d", uid)
+		log.Println("Query: %s", getUserQuery) //DEBUG
+	}
+	jsonOutput, err := self.msgraph_req(result.AccessToken, getUserQuery)
+	if err != nil {
+		log.Println("MSGraph request failed:", err)
+		return nss.StatusNotfound, nssStructs.Passwd{}
+	}
+
+	//Open Struct for result
+	passwdResult := nssStructs.Passwd{}
+
+	//Set default GID
+	passwdResult.GID = config.UserDefaultGID
+
+	//Get UID/GID
+	if config.UseSecAttributes {
+		//Set variables ready...not sure if there's a better way to handle this.
+		userSecAttributes := jsonOutput["customSecurityAttributes"].(map[string]interface{})
+		attributeSet := userSecAttributes[config.AttributeSet].(map[string]interface{})
+		passwdResult.UID = uint(attributeSet[config.UserUIDAttribute].(float64))
+		if attributeSet[config.UserGIDAttribute] != nil {
+			//GID exists
+			passwdResult.GID = uint(attributeSet[config.UserGIDAttribute].(float64))
+		}
+	} else {
+		passwdResult.UID = jsonOutput[config.UserUIDAttribute].(uint)
+		if jsonOutput[config.UserGIDAttribute] != nil {
+			passwdResult.GID = jsonOutput[config.UserGIDAttribute].(uint)
+		}
+	}
+	//Strip domain from UPN
+	user := strings.Split(jsonOutput["userPrincipalName"].(string), "@")[0]
+
+	//Set user info
+	passwdResult.Username = user
+	passwdResult.Password = "x"
+	passwdResult.Gecos = app
+	passwdResult.Dir = fmt.Sprintf("/home/%s", user)
+	passwdResult.Shell = "/bin/bash"
+
+	return nss.StatusSuccess, passwdResult
 }
 
 // GroupAll returns all groups
