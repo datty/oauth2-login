@@ -1,15 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/datty/pam-azuread/internal/conf"
 
@@ -107,6 +110,29 @@ func (self LibNssOauth) msgraph_req(t string, req string) (output map[string]int
 	return output, nil
 }
 
+//Post request against Microsoft Graph API using token, return status
+func (self LibNssOauth) msgraph_update(t string, req string, val []byte) (status bool, err error) {
+	requestURL := fmt.Sprintf("https://graph.microsoft.com:443/%s", req)
+	token := fmt.Sprintf("Bearer %s", t)
+
+	request, err := http.NewRequest(http.MethodPatch, requestURL, bytes.NewBuffer(val))
+	request.Header.Set("Content-Type", "application/json; charset=UTF-8")
+	request.Header.Set("Authorization", token)
+	if err != nil {
+		return false, err
+	}
+	res, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return false, err
+	}
+	//Check if valid response
+	if res.StatusCode != 204 {
+		return false, fmt.Errorf("%v", res.StatusCode)
+	} else {
+		return true, nil
+	}
+}
+
 func (self LibNssOauth) GetUnusedUID(t string) (output uint, err error) {
 
 	//Build all users query. Filters users without licences and only returns required fields.
@@ -157,9 +183,57 @@ func (self LibNssOauth) GetUnusedUID(t string) (output uint, err error) {
 	}
 	//Sort UIDs backwards
 	sort.Sort(sort.Reverse(sort.IntSlice(uidList)))
-	newUID := uint(uidList[0] + 1)
+	newUID := uint(uidList[0] + rand.Intn(10))
 
 	return newUID, nil
+}
+
+//Post request against Microsoft Graph API using token, return status
+func (self LibNssOauth) AutoSetUID(t string, userid string) (uid uint, err error) {
+
+	//Get Next Available UID
+	uid, err = self.GetUnusedUID(t)
+	if err != nil {
+		return 0, err
+	}
+
+	//Build query and body to set UID
+	var json string
+	getUIDQuery := "/users/" + userid
+	if config.UseSecAttributes {
+		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
+		getUIDQuery = "beta" + getUIDQuery
+		log.Println("Query: %s", getUIDQuery) //DEBUG
+
+		//Set JSON
+		json = fmt.Sprintf(`{
+			"customSecurityAttributes": {
+				"%s": {
+					"@odata.type": "#microsoft.graph.customSecurityAttributeValue",
+					"%s@odata.type":"#Int32",
+					"%s": %d
+				}
+			}
+		}`, config.AttributeSet, config.UserUIDAttribute, config.UserUIDAttribute, uid)
+		log.Println("JSON: %s", json)
+	} else {
+		getUIDQuery = "v1.0" + getUIDQuery
+		log.Println("Query: %s", getUIDQuery) //DEBUG
+
+		//Set JSON
+		json = fmt.Sprintf(`{
+			"%s": %d
+		}`, config.UserUIDAttribute, uid)
+	}
+
+	_, err = self.msgraph_update(t, getUIDQuery, []byte(json))
+
+	if err != nil {
+		log.Println("MSGraph request failed:", err)
+		return 0, err
+	}
+	return uid, err
+
 }
 
 // PasswdAll will populate all entries for libnss
@@ -259,7 +333,11 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 		//Add this user to result if no errors flagged
 		if userUIDErr == true {
 			//Do the magic and set UID
-			tempUser.UID, err = self.GetUnusedUID(result.AccessToken)
+			tempUser.UID, err = self.AutoSetUID(result.AccessToken, xx["id"].(string))
+			//AzureAD eventual consistency...Pause to prevent UID clash
+			time.Sleep(5 * time.Second)
+			log.Println("UserID: %s", xx["id"].(string))
+			log.Println("User: %s", xx["userPrincipalName"].(string))
 			log.Println("New UID: %s", tempUser.UID)
 		}
 		passwdResult = append(passwdResult, tempUser)
