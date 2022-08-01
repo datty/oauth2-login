@@ -522,27 +522,58 @@ func (self LibNssOauth) PasswdByUid(uid uint) (nss.Status, nssStructs.Passwd) {
 
 // GroupAll returns all groups
 func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
+	//Enable Debug Logging - REMOVE ME! ----------------
+	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
+	//Enable Debug Logging - REMOVE ME! ----------------
+
 	//Get OAuth token
 	result, err := self.oauth_init()
 	log.Println("Test output %s", result)
 	if err != nil {
 		log.Println("Oauth Failed:", err)
+		return nss.StatusUnavail, []nssStructs.Group{}
 	}
 
-	// Azure User Lookup URL
-	//graphUrl := fmt.Sprintf("v1.0/groups")
-	//Pull all groups from Azure
-	//json, err := self.msgraph_req(result.AccessToken, graphUrl)
+	//Build all groups query. Filters users without licences and only returns required fields.
+	getGroupQuery := "v1.0/groups?$count=true&$filter=securityEnabled+eq+true&$expand=members($select=id,userPrincipalName)&$select=id,displayName"
+	log.Println("Query: %s", getGroupQuery) //DEBUG
+	jsonOutput, err := self.msgraph_req(result.AccessToken, getGroupQuery)
 	if err != nil {
-		log.Println("Graph API call failed:", err)
+		log.Println("MSGraph request failed:", err)
+		return nss.StatusUnavail, []nssStructs.Group{}
 	}
-	//for _, value := range json["value"].([]interface{}) {
-	//Map value var to correct type
-	//	xx := value.(map[string]interface{})
-	//}
-	//Disable for now. Not a hard requirement.
-	//return nss.StatusSuccess, []nssStructs.Group{}
-	return nss.StatusNotfound, []nssStructs.Group{}
+
+	//Open Slice/Struct for result
+	groupResult := []nssStructs.Group{}
+
+	for _, result := range jsonOutput["value"].([]interface{}) {
+		//Create temporary struct for group info
+		tempGroup := nssStructs.Group{}
+
+		//Map value var to correct type to allow for access
+		xx := result.(map[string]interface{})
+
+		tempGroupMembers := []string{}
+		//Get Group Members
+		for _, members := range xx["members"].([]interface{}) {
+			xy := members.(map[string]interface{})
+			username := strings.Split(xy["userPrincipalName"].(string), "@")[0]
+			tempGroupMembers = append(tempGroupMembers, username)
+		}
+		tempGroup.Members = tempGroupMembers
+		tempGroup.Groupname = xx["displayName"].(string)
+		tempGroup.Password = "x"
+		tempGroup.GID = 100
+
+		groupResult = append(groupResult, tempGroup)
+	}
+
+	return nss.StatusSuccess, groupResult
 }
 
 // GroupByName returns a group, not managed here
