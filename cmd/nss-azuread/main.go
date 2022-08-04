@@ -9,6 +9,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -588,15 +589,123 @@ func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
 
 // GroupByName returns a group, not managed here
 func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) {
+	//Enable Debug Logging - REMOVE ME! ----------------
+	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
+	//Enable Debug Logging - REMOVE ME! ----------------
 
-	//disable for now.
-	return nss.StatusNotfound, nssStructs.Group{}
+	//Get OAuth token
+	result, err := self.oauth_init()
+	log.Println("Test output %s", result)
+	if err != nil {
+		log.Println("Oauth Failed:", err)
+		return nss.StatusUnavail, nssStructs.Group{}
+	}
+
+	groupName := url.QueryEscape(name)
+	//Search for group by display name
+	getGroupQuery := "v1.0/groups?$count=true&$filter=securityEnabled+eq+true&$expand=members($select=id,userPrincipalName)&$select=id,displayName," + config.GroupGidAttribute + "&$search=(displayName:" + groupName + ")"
+	log.Println("Query: %s", getGroupQuery) //DEBUG
+	jsonOutput, err := self.msgraph_req(result.AccessToken, getGroupQuery)
+	if err != nil {
+		log.Println("MSGraph request failed:", err)
+		return nss.StatusUnavail, nssStructs.Group{}
+	}
+
+	//Open Slice/Struct for result
+	groupResult := nssStructs.Group{}
+
+	//Loop through matching search results
+	for _, result := range jsonOutput["value"].([]interface{}) {
+		//Map value var to correct type to allow for access
+		xx := result.(map[string]interface{})
+		//Check for exact match on name
+		if xx["displayName"].(string) == name {
+			log.Println("Group:", xx["displayName"].(string))
+			tempGroupMembers := []string{}
+			//Get Group Members
+			for _, members := range xx["members"].([]interface{}) {
+				xy := members.(map[string]interface{})
+				if xy["userPrincipalName"] != nil {
+					username := strings.Split(xy["userPrincipalName"].(string), "@")[0]
+					tempGroupMembers = append(tempGroupMembers, username)
+					log.Println("Member in group:", username)
+				}
+			}
+			groupResult.Members = tempGroupMembers
+			groupResult.Groupname = xx["displayName"].(string)
+			groupResult.Password = "x"
+			if xx[config.GroupGidAttribute] != nil {
+				groupResult.GID = uint(xx[config.GroupGidAttribute].(float64))
+				return nss.StatusSuccess, groupResult
+			}
+		}
+	}
+	return nss.StatusNotfound, groupResult
+
 }
 
 // GroupBuGid retusn group by id, not managed here
 func (self LibNssOauth) GroupByGid(gid uint) (nss.Status, nssStructs.Group) {
 	// fmt.Printf("GroupByGid %d\n", gid)
-	return nss.StatusNotfound, nssStructs.Group{}
+	// URL v1.0/groups?$select=displayName,extension_a46b7377a319489eb7e3a28c38ecdef6_GID&$filter=securityEnabled+eq+true&$filter=extension_a46b7377a319489eb7e3a28c38ecdef6_GID+eq+610
+	//Enable Debug Logging - REMOVE ME! ----------------
+	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
+	//Enable Debug Logging - REMOVE ME! ----------------
+
+	//Get OAuth token
+	result, err := self.oauth_init()
+	log.Println("Test output %s", result)
+	if err != nil {
+		log.Println("Oauth Failed:", err)
+		return nss.StatusUnavail, nssStructs.Group{}
+	}
+
+	//Search for group by GID
+	getGroupQuery := "v1.0/groups?$count=true&$expand=members($select=id,userPrincipalName)&$select=id,displayName," + config.GroupGidAttribute + "&$filter=" + config.GroupGidAttribute + "+eq+" + fmt.Sprint(gid) + "+and+securityEnabled+eq+true"
+	log.Println("Query: %s", getGroupQuery) //DEBUG
+	jsonOutput, err := self.msgraph_req(result.AccessToken, getGroupQuery)
+	if err != nil {
+		log.Println("MSGraph request failed:", err)
+		return nss.StatusUnavail, nssStructs.Group{}
+	}
+
+	//Open Slice/Struct for result
+	groupResult := nssStructs.Group{}
+
+	//Parse jsonOutput to something usable...
+	xx := jsonOutput["value"].([]interface{})
+	log.Println("GroupLen:", len(xx))
+	if len(xx) != 0 {
+		xy := xx[0].(map[string]interface{})
+		log.Println("Group:", xy["displayName"].(string))
+
+		tempGroupMembers := []string{}
+		//Get Group Members
+		for _, members := range xy["members"].([]interface{}) {
+			xz := members.(map[string]interface{})
+			if xz["userPrincipalName"] != nil {
+				username := strings.Split(xz["userPrincipalName"].(string), "@")[0]
+				tempGroupMembers = append(tempGroupMembers, username)
+				log.Println("Member in group:", username)
+			}
+		}
+		groupResult.Members = tempGroupMembers
+		groupResult.Groupname = xy["displayName"].(string)
+		groupResult.Password = "x"
+		groupResult.GID = uint(xy[config.GroupGidAttribute].(float64))
+		return nss.StatusSuccess, groupResult
+	}
+	return nss.StatusNotfound, groupResult
 }
 
 // ShadowAll return all shadow entries, not managed as no password are allowed here
