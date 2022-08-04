@@ -18,11 +18,14 @@ type Config struct {
 	TenantID     string `yaml:"tenant-id"`
 	Domain       string `yaml:"o365-domain"`
 	//Used for lookup of user UID from AzureAD Custom Security Attributes
-	UseSecAttributes bool   `yaml:"custom-security-attributes"`
-	AttributeSet     string `yaml:"attribute-set"`
-	UserUIDAttribute string `yaml:"user-uid-attribute-name"`
-	UserGIDAttribute string `yaml:"user-gid-attribute-name"`
-	UserDefaultGID   uint   `yaml:"user-gid-default"`
+	UseSecAttributes  bool   `yaml:"custom-security-attributes"`
+	AttributeSet      string `yaml:"attribute-set"`
+	UserUIDAttribute  string `yaml:"user-uid-attribute-name"`
+	UserGIDAttribute  string `yaml:"user-gid-attribute-name"`
+	UserDefaultGID    uint   `yaml:"user-gid-default"`
+	UserAutoUID       bool   `yaml:"user-auto-uid"`
+	GroupGidAttribute string `yaml:"group-gid-attribute-name"`
+	GroupAutoGID      bool   `yaml:"group-auto-gid"`
 	//Should not need to change these...
 	PamScopes []string `yaml:"pam-scopes"`
 	NssScopes []string `yaml:"nss-scopes"`

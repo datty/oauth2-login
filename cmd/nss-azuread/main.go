@@ -331,7 +331,7 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 		tempUser.Shell = "/bin/bash"
 
 		//Add this user to result if no errors flagged
-		if userUIDErr == true {
+		if userUIDErr == true && config.UserAutoUID == true {
 			//Do the magic and set UID
 			tempUser.UID, err = self.AutoSetUID(result.AccessToken, xx["id"].(string))
 			//AzureAD eventual consistency...Pause to prevent UID clash
@@ -339,6 +339,9 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 			log.Println("UserID: %s", xx["id"].(string))
 			log.Println("User: %s", xx["userPrincipalName"].(string))
 			log.Println("New UID: %s", tempUser.UID)
+		} else if userUIDErr == true && config.UserAutoUID == false {
+			//Return nobody UID if autoUID is disabled
+			tempUser.UID = 65534
 		}
 		passwdResult = append(passwdResult, tempUser)
 	}
@@ -436,12 +439,15 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 	passwdResult.Shell = "/bin/bash"
 
 	//Add this user to result if no errors flagged
-	if userUIDErr == true {
+	if userUIDErr == true && config.UserAutoUID == true {
 		//Do the magic and set UID
 		passwdResult.UID, err = self.AutoSetUID(result.AccessToken, jsonOutput["id"].(string))
 		log.Println("UserID: %s", jsonOutput["id"].(string))              //DEBUG
 		log.Println("User: %s", jsonOutput["userPrincipalName"].(string)) //DEBUG
 		log.Println("New UID: %s", passwdResult.UID)                      //DEBUG
+	} else if userUIDErr == true && config.UserAutoUID == false {
+		//Return not found if no UID and auto UID disabled
+		return nss.StatusNotfound, nssStructs.Passwd{}
 	}
 
 	return nss.StatusSuccess, passwdResult
@@ -539,8 +545,8 @@ func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
 		return nss.StatusUnavail, []nssStructs.Group{}
 	}
 
-	//Build all groups query. Filters users without licences and only returns required fields.
-	getGroupQuery := "v1.0/groups?$count=true&$filter=securityEnabled+eq+true&$expand=members($select=id,userPrincipalName)&$select=id,displayName"
+	//Build all groups query. Filters for groups where GID is set and the group is a security group
+	getGroupQuery := "v1.0/groups?$count=true&$filter=securityEnabled+eq+true&$expand=members($select=id,userPrincipalName)&$select=id,displayName," + config.GroupGidAttribute
 	log.Println("Query: %s", getGroupQuery) //DEBUG
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getGroupQuery)
 	if err != nil {
@@ -557,20 +563,24 @@ func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
 
 		//Map value var to correct type to allow for access
 		xx := result.(map[string]interface{})
-
+		log.Println("Group:", xx["displayName"].(string))
 		tempGroupMembers := []string{}
 		//Get Group Members
 		for _, members := range xx["members"].([]interface{}) {
 			xy := members.(map[string]interface{})
-			username := strings.Split(xy["userPrincipalName"].(string), "@")[0]
-			tempGroupMembers = append(tempGroupMembers, username)
+			if xy["userPrincipalName"] != nil {
+				username := strings.Split(xy["userPrincipalName"].(string), "@")[0]
+				tempGroupMembers = append(tempGroupMembers, username)
+				log.Println("Member in group:", username)
+			}
 		}
 		tempGroup.Members = tempGroupMembers
 		tempGroup.Groupname = xx["displayName"].(string)
 		tempGroup.Password = "x"
-		tempGroup.GID = 100
-
-		groupResult = append(groupResult, tempGroup)
+		if xx[config.GroupGidAttribute] != nil {
+			tempGroup.GID = uint(xx[config.GroupGidAttribute].(float64))
+			groupResult = append(groupResult, tempGroup)
+		}
 	}
 
 	return nss.StatusSuccess, groupResult

@@ -55,11 +55,12 @@ nss-scopes:
     - "openid"
 tenant-id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 o365-domain: "%s@example.org"
-createuser: true
-sufficient-roles: 
-    - "serverAccess"
-allowed-roles: 
-    - "wheel"
+custom-security-attributes: true
+attribute-set: "RFC2307"
+user-uid-attribute-name: "UID"
+user-gid-attribute-name: "GID"
+user-gid-default: 100
+group-gid-attribute-name: "extension_UUIDX_GID"
 ```
 
 #### Config options
@@ -68,3 +69,22 @@ allowed-roles:
 - `sufficient-roles`: User must have these roles assigned to login.
 - `allowed-roles`: If a user has these roles, they will be assigned to his Unix user as groups.
   All other roles will be ignored.
+
+#### Azure AD Setup
+Quickly noting group GID attribute setup.
+
+As AzureAD does not have UID/GIDs, we have to use custom attributes to add these values. For Users we can use custom security attributes, but for groups this functionality is not yet available. To add GIDs to group objects we need to register an application directory extension to create the GID property. This can be done using a POST request as follows:
+
+POST https://graph.microsoft.com/v1.0/applications/${APPLICATION OBJECT ID}/extensionProperties
+Headers:
+- Authorization = Bearer ${AzureADToken}
+Body:
+{
+    "name": "GID",
+    "dataType": "Integer",
+    "targetObjects": [
+        "Group"
+    ]
+}
+
+The response will contain the property name which should be in the form of extension_UUID_GID. Use this value for the group-gid-attribute-name setting in the azuread.conf file.

@@ -15,4 +15,6 @@ attribute-set: "RFC2307"
 user-uid-attribute-name: "UID"
 user-gid-attribute-name: "GID"
 user-gid-default: 100
-
+user-auto-uid: true
+group-gid-attribute-name: "extension_UUIDX_GID"
+group-auto-gid: true
