@@ -490,41 +490,45 @@ func (self LibNssOauth) PasswdByUid(uid uint) (nss.Status, nssStructs.Passwd) {
 
 	//Parse jsonOutput to something usable...
 	xx := jsonOutput["value"].([]interface{})
-	xy := xx[0].(map[string]interface{})
+	if len(xx) != 0 {
+		xy := xx[0].(map[string]interface{})
 
-	//Open Struct for result
-	passwdResult := nssStructs.Passwd{}
+		//Open Struct for result
+		passwdResult := nssStructs.Passwd{}
 
-	//Set default GID
-	passwdResult.GID = config.UserDefaultGID
+		//Set default GID
+		passwdResult.GID = config.UserDefaultGID
 
-	//Get UID/GID
-	if config.UseSecAttributes {
-		//Set variables ready...not sure if there's a better way to handle this.
-		userSecAttributes := xy["customSecurityAttributes"].(map[string]interface{})
-		attributeSet := userSecAttributes[config.AttributeSet].(map[string]interface{})
-		passwdResult.UID = uint(attributeSet[config.UserUIDAttribute].(float64))
-		if attributeSet[config.UserGIDAttribute] != nil {
-			//GID exists
-			passwdResult.GID = uint(attributeSet[config.UserGIDAttribute].(float64))
+		//Get UID/GID
+		if config.UseSecAttributes {
+			//Set variables ready...not sure if there's a better way to handle this.
+			userSecAttributes := xy["customSecurityAttributes"].(map[string]interface{})
+			attributeSet := userSecAttributes[config.AttributeSet].(map[string]interface{})
+			passwdResult.UID = uint(attributeSet[config.UserUIDAttribute].(float64))
+			if attributeSet[config.UserGIDAttribute] != nil {
+				//GID exists
+				passwdResult.GID = uint(attributeSet[config.UserGIDAttribute].(float64))
+			}
+		} else {
+			passwdResult.UID = xy[config.UserUIDAttribute].(uint)
+			if xy[config.UserGIDAttribute] != nil {
+				passwdResult.GID = xy[config.UserGIDAttribute].(uint)
+			}
 		}
+		//Strip domain from UPN
+		user := strings.Split(xy["userPrincipalName"].(string), "@")[0]
+
+		//Set user info
+		passwdResult.Username = user
+		passwdResult.Password = "x"
+		passwdResult.Gecos = app
+		passwdResult.Dir = fmt.Sprintf("/home/%s", user)
+		passwdResult.Shell = "/bin/bash"
+
+		return nss.StatusSuccess, passwdResult
 	} else {
-		passwdResult.UID = xy[config.UserUIDAttribute].(uint)
-		if xy[config.UserGIDAttribute] != nil {
-			passwdResult.GID = xy[config.UserGIDAttribute].(uint)
-		}
+		return nss.StatusNotfound, nssStructs.Passwd{}
 	}
-	//Strip domain from UPN
-	user := strings.Split(xy["userPrincipalName"].(string), "@")[0]
-
-	//Set user info
-	passwdResult.Username = user
-	passwdResult.Password = "x"
-	passwdResult.Gecos = app
-	passwdResult.Dir = fmt.Sprintf("/home/%s", user)
-	passwdResult.Shell = "/bin/bash"
-
-	return nss.StatusSuccess, passwdResult
 }
 
 // GroupAll returns all groups
