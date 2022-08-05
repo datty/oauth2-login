@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -44,7 +43,7 @@ func (self LibNssOauth) oauth_init() (result confidential.AuthResult, err error)
 	//Load config vars
 	if config == nil {
 		if config, err = conf.ReadConfig(); err != nil {
-			log.Println("unable to read configfile:", err)
+			errorLog.Println("unable to read configfile:", err)
 			return result, err
 		}
 	}
@@ -55,24 +54,24 @@ func (self LibNssOauth) oauth_init() (result confidential.AuthResult, err error)
 	//Attempt oauth
 	cred, err := confidential.NewCredFromSecret(config.ClientSecret)
 	if err != nil {
-		log.Fatal(err)
+		errorLog.Println(err)
 	}
 	app, err := confidential.New(config.ClientID, cred, confidential.WithAuthority("https://login.microsoftonline.com/"+config.TenantID), confidential.WithAccessor(cacheAccessor))
 	if err != nil {
-		log.Fatal(err)
+		errorLog.Println(err)
 	}
 	result, err = app.AcquireTokenSilent(context.Background(), config.NssScopes)
 	if err != nil {
 		result, err = app.AcquireTokenByCredential(context.Background(), config.NssScopes)
 		if err != nil {
-			log.Fatal(err)
+			errorLog.Println(err)
 		}
-		log.Println("Access Token Is " + result.AccessToken)
+		//infoLog.Println("Acquired Access Token " + result.AccessToken)
+		debugLog.Println("Acquired Access Token")
 		return result, err
 	}
-	log.Println("Silently acquired token " + result.AccessToken)
+	debugLog.Println("Silently acquired token")
 	return result, err
-
 }
 
 //Request against Microsoft Graph API using token, return JSON
@@ -101,12 +100,12 @@ func (self LibNssOauth) msgraph_req(t string, req string) (output map[string]int
 	}
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		log.Fatal(err)
+		errorLog.Println(err)
 	}
 
 	jsonErr := json.Unmarshal([]byte(body), &output)
 	if jsonErr != nil {
-		log.Fatal(err)
+		errorLog.Println(err)
 	}
 	return output, nil
 }
@@ -141,14 +140,14 @@ func (self LibNssOauth) GetUnusedUID(t string) (output uint, err error) {
 	if config.UseSecAttributes {
 		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
 		getUIDQuery = "beta" + getUIDQuery + "customSecurityAttributes"
-		log.Println("Query: %s", getUIDQuery) //DEBUG
+		debugLog.Println("Query:", getUIDQuery) //DEBUG
 	} else {
 		getUIDQuery = "v1.0" + getUIDQuery + config.UserUIDAttribute
-		log.Println("Query: %s", getUIDQuery) //DEBUG
+		debugLog.Println("Query:", getUIDQuery) //DEBUG
 	}
 	jsonOutput, err := self.msgraph_req(t, getUIDQuery)
 	if err != nil {
-		log.Println("MSGraph request failed:", err)
+		errorLog.Println("MSGraph request failed:", err)
 		return 0, err
 	}
 
@@ -204,7 +203,7 @@ func (self LibNssOauth) AutoSetUID(t string, userid string) (uid uint, err error
 	if config.UseSecAttributes {
 		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
 		getUIDQuery = "beta" + getUIDQuery
-		log.Println("Query: %s", getUIDQuery) //DEBUG
+		debugLog.Println("Query:", getUIDQuery) //DEBUG
 
 		//Set JSON
 		json = fmt.Sprintf(`{
@@ -216,10 +215,9 @@ func (self LibNssOauth) AutoSetUID(t string, userid string) (uid uint, err error
 				}
 			}
 		}`, config.AttributeSet, config.UserUIDAttribute, config.UserUIDAttribute, uid)
-		log.Println("JSON: %s", json)
 	} else {
 		getUIDQuery = "v1.0" + getUIDQuery
-		log.Println("Query: %s", getUIDQuery) //DEBUG
+		debugLog.Println("Query:", getUIDQuery) //DEBUG
 
 		//Set JSON
 		json = fmt.Sprintf(`{
@@ -230,7 +228,7 @@ func (self LibNssOauth) AutoSetUID(t string, userid string) (uid uint, err error
 	_, err = self.msgraph_update(t, getUIDQuery, []byte(json))
 
 	if err != nil {
-		log.Println("MSGraph request failed:", err)
+		errorLog.Println("MSGraph request failed:", err)
 		return 0, err
 	}
 	return uid, err
@@ -240,20 +238,10 @@ func (self LibNssOauth) AutoSetUID(t string, userid string) (uid uint, err error
 // PasswdAll will populate all entries for libnss
 func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 
-	//Enable Debug Logging - REMOVE ME! ----------------
-	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-	defer f.Close()
-	log.SetOutput(f)
-	//Enable Debug Logging - REMOVE ME! ----------------
-
 	//Get OAuth token
 	result, err := self.oauth_init()
-	log.Println("Test output %s", result)
 	if err != nil {
-		log.Println("Oauth Failed:", err)
+		errorLog.Println("Oauth Failed:", err)
 		return nss.StatusUnavail, []nssStructs.Passwd{}
 	}
 
@@ -262,14 +250,14 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 	if config.UseSecAttributes {
 		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
 		getUserQuery = "beta" + getUserQuery + ",customSecurityAttributes"
-		log.Println("Query: %s", getUserQuery) //DEBUG
+		debugLog.Println("PasswdAll Query:", getUserQuery) //DEBUG
 	} else {
 		getUserQuery = "v1.0" + getUserQuery + "," + config.UserUIDAttribute + "," + config.UserGIDAttribute
-		log.Println("Query: %s", getUserQuery) //DEBUG
+		debugLog.Println("PasswdAll Query:", getUserQuery) //DEBUG
 	}
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getUserQuery)
 	if err != nil {
-		log.Println("MSGraph request failed:", err)
+		errorLog.Println("PasswdAll MSGraph request failed:", err)
 		return nss.StatusUnavail, []nssStructs.Passwd{}
 	}
 
@@ -309,7 +297,7 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 						tempUser.GID = uint(attributeSet[config.UserGIDAttribute].(float64))
 					}
 				} else {
-					log.Println("No CSA-AS") //DEBUG
+					errorLog.Println("No CSA-AS") //DEBUG
 				}
 			}
 		} else {
@@ -337,9 +325,9 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 			tempUser.UID, err = self.AutoSetUID(result.AccessToken, xx["id"].(string))
 			//AzureAD eventual consistency...Pause to prevent UID clash
 			time.Sleep(5 * time.Second)
-			log.Println("UserID: %s", xx["id"].(string))
-			log.Println("User: %s", xx["userPrincipalName"].(string))
-			log.Println("New UID: %s", tempUser.UID)
+			debugLog.Println("UserID:", xx["id"].(string))
+			debugLog.Println("User:", xx["userPrincipalName"].(string))
+			debugLog.Println("New UID:", tempUser.UID)
 		} else if userUIDErr == true && config.UserAutoUID == false {
 			//Return nobody UID if autoUID is disabled
 			tempUser.UID = 65534
@@ -353,20 +341,10 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 // PasswdByName returns a single entry by name.
 func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd) {
 
-	//Enable Debug Logging - REMOVE ME! ----------------
-	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-	defer f.Close()
-	log.SetOutput(f)
-	//Enable Debug Logging - REMOVE ME! ----------------
-
 	//Get OAuth token
 	result, err := self.oauth_init()
-	log.Println("Test output %s", result)
 	if err != nil {
-		log.Println("Oauth Failed:", err)
+		errorLog.Println("Oauth Failed:", err)
 		return nss.StatusUnavail, nssStructs.Passwd{}
 	}
 
@@ -377,14 +355,14 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 	if config.UseSecAttributes {
 		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
 		getUserQuery = "beta" + getUserQuery + ",customSecurityAttributes"
-		log.Println("Query: %s", getUserQuery) //DEBUG
+		debugLog.Println("PasswdByName Query:", getUserQuery) //DEBUG
 	} else {
 		getUserQuery = "v1.0" + getUserQuery + "," + config.UserUIDAttribute + "," + config.UserGIDAttribute
-		log.Println("Query: %s", getUserQuery) //DEBUG
+		debugLog.Println("PasswdByName Query:", getUserQuery) //DEBUG
 	}
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getUserQuery)
 	if err != nil {
-		log.Println("MSGraph request failed:", err)
+		errorLog.Println("PasswdByName MSGraph request failed:", err)
 		return nss.StatusNotfound, nssStructs.Passwd{}
 	}
 
@@ -417,7 +395,7 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 					passwdResult.GID = uint(attributeSet[config.UserGIDAttribute].(float64))
 				}
 			} else {
-				log.Println("No CSA-AS") //DEBUG
+				errorLog.Println("No CSA-AS") //DEBUG
 			}
 		}
 	} else {
@@ -443,9 +421,9 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 	if userUIDErr == true && config.UserAutoUID == true {
 		//Do the magic and set UID
 		passwdResult.UID, err = self.AutoSetUID(result.AccessToken, jsonOutput["id"].(string))
-		log.Println("UserID: %s", jsonOutput["id"].(string))              //DEBUG
-		log.Println("User: %s", jsonOutput["userPrincipalName"].(string)) //DEBUG
-		log.Println("New UID: %s", passwdResult.UID)                      //DEBUG
+		debugLog.Println("UserID:", jsonOutput["id"].(string))              //DEBUG
+		debugLog.Println("User:", jsonOutput["userPrincipalName"].(string)) //DEBUG
+		debugLog.Println("New UID:", passwdResult.UID)                      //DEBUG
 	} else if userUIDErr == true && config.UserAutoUID == false {
 		//Return not found if no UID and auto UID disabled
 		return nss.StatusNotfound, nssStructs.Passwd{}
@@ -456,20 +434,11 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 
 // PasswdByUid returns a single entry by uid, not managed here
 func (self LibNssOauth) PasswdByUid(uid uint) (nss.Status, nssStructs.Passwd) {
-	//Enable Debug Logging - REMOVE ME! ----------------
-	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-	defer f.Close()
-	log.SetOutput(f)
-	//Enable Debug Logging - REMOVE ME! ----------------
 
 	//Get OAuth token
 	result, err := self.oauth_init()
-	log.Println("Test output %s", result)
 	if err != nil {
-		log.Println("Oauth Failed:", err)
+		errorLog.Println("Oauth Failed:", err)
 		return nss.StatusUnavail, nssStructs.Passwd{}
 	}
 
@@ -477,14 +446,14 @@ func (self LibNssOauth) PasswdByUid(uid uint) (nss.Status, nssStructs.Passwd) {
 	if config.UseSecAttributes {
 		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
 		getUserQuery = "beta" + getUserQuery + ",customSecurityAttributes&$filter=customSecurityAttributes/" + config.AttributeSet + "/" + config.UserUIDAttribute + "+eq+" + fmt.Sprintf("%d", uid)
-		log.Println("Query: %s", getUserQuery) //DEBUG
+		debugLog.Println("PasswdByUid Query:", getUserQuery) //DEBUG
 	} else {
 		getUserQuery = "v1.0" + getUserQuery + "," + config.UserUIDAttribute + "," + config.UserGIDAttribute + "&$filter=" + config.UserUIDAttribute + "+eq+" + fmt.Sprintf("%d", uid)
-		log.Println("Query: %s", getUserQuery) //DEBUG
+		debugLog.Println("PasswdByUid Query:", getUserQuery) //DEBUG
 	}
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getUserQuery)
 	if err != nil {
-		log.Println("MSGraph request failed:", err)
+		errorLog.Println("PasswdByUid MSGraph request failed:", err)
 		return nss.StatusNotfound, nssStructs.Passwd{}
 	}
 
@@ -533,29 +502,19 @@ func (self LibNssOauth) PasswdByUid(uid uint) (nss.Status, nssStructs.Passwd) {
 
 // GroupAll returns all groups
 func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
-	//Enable Debug Logging - REMOVE ME! ----------------
-	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-	defer f.Close()
-	log.SetOutput(f)
-	//Enable Debug Logging - REMOVE ME! ----------------
-
 	//Get OAuth token
 	result, err := self.oauth_init()
-	log.Println("Test output %s", result)
 	if err != nil {
-		log.Println("Oauth Failed:", err)
+		errorLog.Println("Oauth Failed:", err)
 		return nss.StatusUnavail, []nssStructs.Group{}
 	}
 
 	//Build all groups query. Filters for groups where GID is set and the group is a security group
 	getGroupQuery := "v1.0/groups?$count=true&$filter=securityEnabled+eq+true&$expand=members($select=id,userPrincipalName)&$select=id,displayName," + config.GroupGidAttribute
-	log.Println("Query: %s", getGroupQuery) //DEBUG
+	debugLog.Println("GroupAll Query:", getGroupQuery) //DEBUG
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getGroupQuery)
 	if err != nil {
-		log.Println("MSGraph request failed:", err)
+		errorLog.Println("GroupAll MSGraph request failed:", err)
 		return nss.StatusUnavail, []nssStructs.Group{}
 	}
 
@@ -568,7 +527,6 @@ func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
 
 		//Map value var to correct type to allow for access
 		xx := result.(map[string]interface{})
-		log.Println("Group:", xx["displayName"].(string))
 		tempGroupMembers := []string{}
 		//Get Group Members
 		for _, members := range xx["members"].([]interface{}) {
@@ -576,7 +534,6 @@ func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
 			if xy["userPrincipalName"] != nil {
 				username := strings.Split(xy["userPrincipalName"].(string), "@")[0]
 				tempGroupMembers = append(tempGroupMembers, username)
-				log.Println("Member in group:", username)
 			}
 		}
 		tempGroup.Members = tempGroupMembers
@@ -593,30 +550,20 @@ func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
 
 // GroupByName returns a group, not managed here
 func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) {
-	//Enable Debug Logging - REMOVE ME! ----------------
-	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-	defer f.Close()
-	log.SetOutput(f)
-	//Enable Debug Logging - REMOVE ME! ----------------
-
 	//Get OAuth token
 	result, err := self.oauth_init()
-	log.Println("Test output %s", result)
 	if err != nil {
-		log.Println("Oauth Failed:", err)
+		errorLog.Println("Oauth Failed:", err)
 		return nss.StatusUnavail, nssStructs.Group{}
 	}
 
 	groupName := url.QueryEscape(name)
 	//Search for group by display name, simple query due to MS Graph 400
 	getGroupQuery := "v1.0/groups?$filter=securityEnabled+eq+true&$select=id,displayName&$search=\"displayName:" + groupName + "\""
-	log.Println("GroupByName Query: %s", getGroupQuery) //DEBUG
+	debugLog.Println("GroupByName Query:", getGroupQuery) //DEBUG
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getGroupQuery)
 	if err != nil {
-		log.Println("MSGraph request failed:", err)
+		errorLog.Println("MSGraph request failed:", err)
 		return nss.StatusUnavail, nssStructs.Group{}
 	}
 
@@ -631,14 +578,12 @@ func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) 
 		if xx["displayName"].(string) == name {
 			//Lookup this group and get all info
 			ActualGroupQuery := "v1.0/groups/" + xx["id"].(string) + "?$expand=members($select=id,userPrincipalName)&$select=id,displayName," + config.GroupGidAttribute
-			log.Println("GroupByName Specific Query: %s", ActualGroupQuery) //DEBUG
+			debugLog.Println("GroupByName Specific Query:", ActualGroupQuery) //DEBUG
 			groupOutput, err := self.msgraph_req(result.AccessToken, getGroupQuery)
 			if err != nil {
 				log.Println("MSGraph request failed:", err)
 				return nss.StatusUnavail, nssStructs.Group{}
 			}
-
-			log.Println("Group:", groupOutput["displayName"].(string))
 			tempGroupMembers := []string{}
 			//Get Group Members
 			for _, members := range groupOutput["members"].([]interface{}) {
@@ -646,7 +591,6 @@ func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) 
 				if xy["userPrincipalName"] != nil {
 					username := strings.Split(xy["userPrincipalName"].(string), "@")[0]
 					tempGroupMembers = append(tempGroupMembers, username)
-					log.Println("Member in group:", username)
 				}
 			}
 			groupResult.Members = tempGroupMembers
@@ -664,31 +608,19 @@ func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) 
 
 // GroupBuGid retusn group by id, not managed here
 func (self LibNssOauth) GroupByGid(gid uint) (nss.Status, nssStructs.Group) {
-	// fmt.Printf("GroupByGid %d\n", gid)
-	// URL v1.0/groups?$select=displayName,extension_a46b7377a319489eb7e3a28c38ecdef6_GID&$filter=securityEnabled+eq+true&$filter=extension_a46b7377a319489eb7e3a28c38ecdef6_GID+eq+610
-	//Enable Debug Logging - REMOVE ME! ----------------
-	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-	defer f.Close()
-	log.SetOutput(f)
-	//Enable Debug Logging - REMOVE ME! ----------------
-
 	//Get OAuth token
 	result, err := self.oauth_init()
-	log.Println("Test output %s", result)
 	if err != nil {
-		log.Println("Oauth Failed:", err)
+		errorLog.Println("Oauth Failed:", err)
 		return nss.StatusUnavail, nssStructs.Group{}
 	}
 
 	//Search for group by GID
 	getGroupQuery := "v1.0/groups?$count=true&$expand=members($select=id,userPrincipalName)&$select=id,displayName," + config.GroupGidAttribute + "&$filter=" + config.GroupGidAttribute + "+eq+" + fmt.Sprint(gid) + "+and+securityEnabled+eq+true"
-	log.Println("Query: %s", getGroupQuery) //DEBUG
+	debugLog.Println("GroupByGid Query:", getGroupQuery) //DEBUG
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getGroupQuery)
 	if err != nil {
-		log.Println("MSGraph request failed:", err)
+		log.Println("GroupByGid MSGraph request failed:", err)
 		return nss.StatusUnavail, nssStructs.Group{}
 	}
 
@@ -697,11 +629,8 @@ func (self LibNssOauth) GroupByGid(gid uint) (nss.Status, nssStructs.Group) {
 
 	//Parse jsonOutput to something usable...
 	xx := jsonOutput["value"].([]interface{})
-	log.Println("GroupLen:", len(xx))
 	if len(xx) != 0 {
 		xy := xx[0].(map[string]interface{})
-		log.Println("Group:", xy["displayName"].(string))
-
 		tempGroupMembers := []string{}
 		//Get Group Members
 		for _, members := range xy["members"].([]interface{}) {
@@ -709,7 +638,6 @@ func (self LibNssOauth) GroupByGid(gid uint) (nss.Status, nssStructs.Group) {
 			if xz["userPrincipalName"] != nil {
 				username := strings.Split(xz["userPrincipalName"].(string), "@")[0]
 				tempGroupMembers = append(tempGroupMembers, username)
-				log.Println("Member in group:", username)
 			}
 		}
 		groupResult.Members = tempGroupMembers
@@ -723,31 +651,20 @@ func (self LibNssOauth) GroupByGid(gid uint) (nss.Status, nssStructs.Group) {
 
 // ShadowAll return all shadow entries, not managed as no password are allowed here
 func (self LibNssOauth) ShadowAll() (nss.Status, []nssStructs.Shadow) {
-
-	//Enable Debug Logging - REMOVE ME! ----------------
-	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-	defer f.Close()
-	log.SetOutput(f)
-	//Enable Debug Logging - REMOVE ME! ----------------
-
 	//Get OAuth token
 	result, err := self.oauth_init()
-	log.Println("Test output %s", result)
 	if err != nil {
-		log.Println("Oauth Failed:", err)
+		errorLog.Println("Oauth Failed:", err)
 		return nss.StatusUnavail, []nssStructs.Shadow{}
 	}
 
 	//Build all users query. Filters users without licences and only returns required fields.
 	getUserQuery := "v1.0/users?$filter=assignedLicenses/$count+ne+0&$count=true&$select=id,userPrincipalName,lastPasswordChangeDateTime"
-	log.Println("Query: %s", getUserQuery) //DEBUG
+	debugLog.Println("ShadowAll Query:", getUserQuery) //DEBUG
 
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getUserQuery)
 	if err != nil {
-		log.Println("MSGraph request failed:", err)
+		log.Println("ShadowAll MSGraph request failed:", err)
 		return nss.StatusUnavail, []nssStructs.Shadow{}
 	}
 
@@ -768,7 +685,7 @@ func (self LibNssOauth) ShadowAll() (nss.Status, []nssStructs.Shadow) {
 		tempUser.Username = user
 		tempUser.Password = "*"
 		tempUser.PasswordWarn = 7
-		log.Printf("Last Password Change: %s", xx["lastPasswordChangeDateTime"].(string))
+		//log.Printf("Last Password Change: %s", xx["lastPasswordChangeDateTime"].(string))
 		tempUser.LastChange = 19000
 		//tempUser.LastChange = xx["lastPasswordChangeDateTime"]
 		log.Println(tempUser)
@@ -780,21 +697,10 @@ func (self LibNssOauth) ShadowAll() (nss.Status, []nssStructs.Shadow) {
 
 // ShadowByName return shadow entry, not managed as no password are allowed here
 func (self LibNssOauth) ShadowByName(name string) (nss.Status, nssStructs.Shadow) {
-
-	//Enable Debug Logging - REMOVE ME! ----------------
-	f, err := os.OpenFile("/var/log/"+app+".log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-	defer f.Close()
-	log.SetOutput(f)
-	//Enable Debug Logging - REMOVE ME! ----------------
-
 	//Get OAuth token
 	result, err := self.oauth_init()
-	log.Println("Test output %s", result)
 	if err != nil {
-		log.Println("Oauth Failed:", err)
+		errorLog.Println("Oauth Failed:", err)
 		return nss.StatusUnavail, nssStructs.Shadow{}
 	}
 
@@ -804,8 +710,7 @@ func (self LibNssOauth) ShadowByName(name string) (nss.Status, nssStructs.Shadow
 	getUserQuery := "v1.0/users/" + username + "?$count=true&$select=id,userPrincipalName,lastPasswordChangeDateTime"
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getUserQuery)
 	if err != nil {
-		log.Println("MSGraph request failed:", err)
-		log.Println("HERE")
+		errorLog.Println("ShadowByName MSGraph request failed:", err)
 		return nss.StatusNotfound, nssStructs.Shadow{}
 	}
 
@@ -814,7 +719,6 @@ func (self LibNssOauth) ShadowByName(name string) (nss.Status, nssStructs.Shadow
 
 	//tempUser.LastChange = xx["lastPasswordChangeDateTime"]
 	shadowResult := nssStructs.Shadow{Username: user, Password: "*", PasswordWarn: 7, LastChange: 19000, MinChange: 1, MaxChange: 365, ExpirationDate: 19500}
-	log.Println(shadowResult)
 
 	return nss.StatusSuccess, shadowResult
 }
