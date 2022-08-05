@@ -607,9 +607,9 @@ func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) 
 	}
 
 	groupName := url.QueryEscape(name)
-	//Search for group by display name
-	getGroupQuery := "v1.0/groups?$count=true&$filter=securityEnabled+eq+true&$expand=members($select=id,userPrincipalName)&$select=id,displayName," + config.GroupGidAttribute + "&$search=(displayName:" + groupName + ")"
-	log.Println("Query: %s", getGroupQuery) //DEBUG
+	//Search for group by display name, simple query due to MS Graph 400
+	getGroupQuery := "v1.0/groups?$filter=securityEnabled+eq+true&$select=id,displayName&$search=\"displayName:" + groupName + "\""
+	log.Println("GroupByName Query: %s", getGroupQuery) //DEBUG
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getGroupQuery)
 	if err != nil {
 		log.Println("MSGraph request failed:", err)
@@ -620,15 +620,24 @@ func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) 
 	groupResult := nssStructs.Group{}
 
 	//Loop through matching search results
-	for _, result := range jsonOutput["value"].([]interface{}) {
+	for _, value := range jsonOutput["value"].([]interface{}) {
 		//Map value var to correct type to allow for access
-		xx := result.(map[string]interface{})
+		xx := value.(map[string]interface{})
 		//Check for exact match on name
 		if xx["displayName"].(string) == name {
-			log.Println("Group:", xx["displayName"].(string))
+			//Lookup this group and get all info
+			ActualGroupQuery := "v1.0/groups/" + xx["id"].(string) + "?$expand=members($select=id,userPrincipalName)&$select=id,displayName," + config.GroupGidAttribute
+			log.Println("GroupByName Specific Query: %s", ActualGroupQuery) //DEBUG
+			groupOutput, err := self.msgraph_req(result.AccessToken, getGroupQuery)
+			if err != nil {
+				log.Println("MSGraph request failed:", err)
+				return nss.StatusUnavail, nssStructs.Group{}
+			}
+
+			log.Println("Group:", groupOutput["displayName"].(string))
 			tempGroupMembers := []string{}
 			//Get Group Members
-			for _, members := range xx["members"].([]interface{}) {
+			for _, members := range groupOutput["members"].([]interface{}) {
 				xy := members.(map[string]interface{})
 				if xy["userPrincipalName"] != nil {
 					username := strings.Split(xy["userPrincipalName"].(string), "@")[0]
@@ -637,10 +646,10 @@ func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) 
 				}
 			}
 			groupResult.Members = tempGroupMembers
-			groupResult.Groupname = xx["displayName"].(string)
+			groupResult.Groupname = groupOutput["displayName"].(string)
 			groupResult.Password = "x"
 			if xx[config.GroupGidAttribute] != nil {
-				groupResult.GID = uint(xx[config.GroupGidAttribute].(float64))
+				groupResult.GID = uint(groupOutput[config.GroupGidAttribute].(float64))
 				return nss.StatusSuccess, groupResult
 			}
 		}
