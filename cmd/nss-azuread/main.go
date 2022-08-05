@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -40,6 +41,10 @@ var config *conf.Config
 
 func (self LibNssOauth) oauth_init() (result confidential.AuthResult, err error) {
 
+	//Check if running as root, fail if not
+	if os.Getuid() != 0 {
+		errorLog.Fatalf("AzureAD is unavailable, not running as root. Ensure nscd is running")
+	}
 	//Load config vars
 	if config == nil {
 		if config, err = conf.ReadConfig(); err != nil {
@@ -250,10 +255,10 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 	if config.UseSecAttributes {
 		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
 		getUserQuery = "beta" + getUserQuery + ",customSecurityAttributes"
-		debugLog.Println("PasswdAll Query:", getUserQuery) //DEBUG
+		debugLog.Println("PasswdAll Query") //DEBUG
 	} else {
 		getUserQuery = "v1.0" + getUserQuery + "," + config.UserUIDAttribute + "," + config.UserGIDAttribute
-		debugLog.Println("PasswdAll Query:", getUserQuery) //DEBUG
+		debugLog.Println("PasswdAll Query") //DEBUG
 	}
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getUserQuery)
 	if err != nil {
@@ -355,10 +360,10 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 	if config.UseSecAttributes {
 		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
 		getUserQuery = "beta" + getUserQuery + ",customSecurityAttributes"
-		debugLog.Println("PasswdByName Query:", getUserQuery) //DEBUG
+		debugLog.Println("PasswdByName Query:", username) //DEBUG
 	} else {
 		getUserQuery = "v1.0" + getUserQuery + "," + config.UserUIDAttribute + "," + config.UserGIDAttribute
-		debugLog.Println("PasswdByName Query:", getUserQuery) //DEBUG
+		debugLog.Println("PasswdByName Query:", username) //DEBUG
 	}
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getUserQuery)
 	if err != nil {
@@ -446,10 +451,10 @@ func (self LibNssOauth) PasswdByUid(uid uint) (nss.Status, nssStructs.Passwd) {
 	if config.UseSecAttributes {
 		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
 		getUserQuery = "beta" + getUserQuery + ",customSecurityAttributes&$filter=customSecurityAttributes/" + config.AttributeSet + "/" + config.UserUIDAttribute + "+eq+" + fmt.Sprintf("%d", uid)
-		debugLog.Println("PasswdByUid Query:", getUserQuery) //DEBUG
+		debugLog.Println("PasswdByUid Query:", uid) //DEBUG
 	} else {
 		getUserQuery = "v1.0" + getUserQuery + "," + config.UserUIDAttribute + "," + config.UserGIDAttribute + "&$filter=" + config.UserUIDAttribute + "+eq+" + fmt.Sprintf("%d", uid)
-		debugLog.Println("PasswdByUid Query:", getUserQuery) //DEBUG
+		debugLog.Println("PasswdByUid Query:", uid) //DEBUG
 	}
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getUserQuery)
 	if err != nil {
@@ -511,7 +516,7 @@ func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
 
 	//Build all groups query. Filters for groups where GID is set and the group is a security group
 	getGroupQuery := "v1.0/groups?$count=true&$filter=securityEnabled+eq+true&$expand=members($select=id,userPrincipalName)&$select=id,displayName," + config.GroupGidAttribute
-	debugLog.Println("GroupAll Query:", getGroupQuery) //DEBUG
+	debugLog.Println("GroupAll Query") //DEBUG
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getGroupQuery)
 	if err != nil {
 		errorLog.Println("GroupAll MSGraph request failed:", err)
@@ -560,7 +565,7 @@ func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) 
 	groupName := url.QueryEscape(name)
 	//Search for group by display name, simple query due to MS Graph 400
 	getGroupQuery := "v1.0/groups?$filter=securityEnabled+eq+true&$select=id,displayName&$search=\"displayName:" + groupName + "\""
-	debugLog.Println("GroupByName Query:", getGroupQuery) //DEBUG
+	debugLog.Println("GroupByName Query:", name) //DEBUG
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getGroupQuery)
 	if err != nil {
 		errorLog.Println("MSGraph request failed:", err)
@@ -578,8 +583,8 @@ func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) 
 		if xx["displayName"].(string) == name {
 			//Lookup this group and get all info
 			ActualGroupQuery := "v1.0/groups/" + xx["id"].(string) + "?$expand=members($select=id,userPrincipalName)&$select=id,displayName," + config.GroupGidAttribute
-			debugLog.Println("GroupByName Specific Query:", ActualGroupQuery) //DEBUG
-			groupOutput, err := self.msgraph_req(result.AccessToken, getGroupQuery)
+			debugLog.Println("GroupByName Specific Query:", xx["id"].(string)) //DEBUG
+			groupOutput, err := self.msgraph_req(result.AccessToken, ActualGroupQuery)
 			if err != nil {
 				log.Println("MSGraph request failed:", err)
 				return nss.StatusUnavail, nssStructs.Group{}
@@ -617,7 +622,7 @@ func (self LibNssOauth) GroupByGid(gid uint) (nss.Status, nssStructs.Group) {
 
 	//Search for group by GID
 	getGroupQuery := "v1.0/groups?$count=true&$expand=members($select=id,userPrincipalName)&$select=id,displayName," + config.GroupGidAttribute + "&$filter=" + config.GroupGidAttribute + "+eq+" + fmt.Sprint(gid) + "+and+securityEnabled+eq+true"
-	debugLog.Println("GroupByGid Query:", getGroupQuery) //DEBUG
+	debugLog.Println("GroupByGid Query:", gid) //DEBUG
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getGroupQuery)
 	if err != nil {
 		log.Println("GroupByGid MSGraph request failed:", err)
@@ -660,7 +665,7 @@ func (self LibNssOauth) ShadowAll() (nss.Status, []nssStructs.Shadow) {
 
 	//Build all users query. Filters users without licences and only returns required fields.
 	getUserQuery := "v1.0/users?$filter=assignedLicenses/$count+ne+0&$count=true&$select=id,userPrincipalName,lastPasswordChangeDateTime"
-	debugLog.Println("ShadowAll Query:", getUserQuery) //DEBUG
+	debugLog.Println("ShadowAll Query") //DEBUG
 
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getUserQuery)
 	if err != nil {
@@ -708,6 +713,8 @@ func (self LibNssOauth) ShadowByName(name string) (nss.Status, nssStructs.Shadow
 	username := fmt.Sprintf(config.Domain, name)
 
 	getUserQuery := "v1.0/users/" + username + "?$count=true&$select=id,userPrincipalName,lastPasswordChangeDateTime"
+	debugLog.Println("ShadowByName Query:", username) //DEBUG
+
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getUserQuery)
 	if err != nil {
 		errorLog.Println("ShadowByName MSGraph request failed:", err)
