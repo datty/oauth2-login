@@ -57,7 +57,7 @@ func pamAuthenticate(pamh *C.pam_handle_t, uid int, username string, argv []stri
 		return PAM_OPEN_ERR
 	}
 
-	password := strings.TrimSpace(requestPass(pamh, C.PAM_PROMPT_ECHO_OFF, "oauth2-Password: "))
+	password := strings.TrimSpace(requestPass(pamh, C.PAM_PROMPT_ECHO_OFF, "AzureAD-Password: "))
 
 	//Open AzureAD
 	app, err := public.New(config.ClientID, public.WithAuthority("https://login.microsoftonline.com/"+config.TenantID))
