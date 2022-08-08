@@ -25,6 +25,9 @@ import (
 // app name
 const app = "nss-azuread"
 
+//Root Checker
+var isroot bool
+
 // Placeholder main() stub is neccessary for compile.
 func main() {}
 
@@ -37,6 +40,7 @@ func init() {
 type LibNssOauth struct{ nss.LIBNSS }
 
 var config *conf.Config
+var configsecret *conf.ConfigSecrets
 
 //Random ID generator functions
 func generateUniqueID(s []int, min int, max int) int {
@@ -73,10 +77,6 @@ func intContains(s []int, e int) bool {
 
 func (self LibNssOauth) oauth_init() (result confidential.AuthResult, err error) {
 
-	//Check if running as root, fail if not
-	if os.Getuid() != 0 {
-		errorLog.Fatalf("AzureAD is unavailable, not running as root. Ensure nscd is running")
-	}
 	//Load config vars
 	if config == nil {
 		if config, err = conf.ReadConfig(); err != nil {
@@ -85,20 +85,53 @@ func (self LibNssOauth) oauth_init() (result confidential.AuthResult, err error)
 		}
 	}
 
-	//Enable oauth cred cache
-	cacheAccessor := &TokenCache{"/var/tmp/" + app + "_cache.json"}
+	//Check if running as root, return RW access credentials if running as root and enable caching
+	if os.Getuid() != 0 {
+		isroot = false
+		debugLog.Printf("AzureAD access is read only, running as unprivileged user")
+	} else {
+		isroot = true
+		if configsecret == nil {
+			if configsecret, err = conf.ReadSecrets(); err != nil {
+				errorLog.Println("unable to read secretsfile:", err)
+				return result, err
+			}
+		}
+		//Set config vars from secrets if available
+		config.ClientID = configsecret.ClientID
+		config.ClientSecret = configsecret.ClientSecret
+	}
 
-	//Attempt oauth
+	//Open OAuth
 	cred, err := confidential.NewCredFromSecret(config.ClientSecret)
 	if err != nil {
 		errorLog.Println(err)
 	}
-	app, err := confidential.New(config.ClientID, cred, confidential.WithAuthority("https://login.microsoftonline.com/"+config.TenantID), confidential.WithAccessor(cacheAccessor))
-	if err != nil {
-		errorLog.Println(err)
-	}
-	result, err = app.AcquireTokenSilent(context.Background(), config.NssScopes)
-	if err != nil {
+
+	if isroot {
+		//Enable oauth cred cache
+		cacheAccessor := &TokenCache{"/var/tmp/" + app + "_" + fmt.Sprint(os.Getuid()) + "_.json"}
+		app, err := confidential.New(config.ClientID, cred, confidential.WithAuthority("https://login.microsoftonline.com/"+config.TenantID), confidential.WithAccessor(cacheAccessor))
+		if err != nil {
+			errorLog.Println(err)
+		}
+		result, err = app.AcquireTokenSilent(context.Background(), config.NssScopes)
+		if err != nil {
+			result, err = app.AcquireTokenByCredential(context.Background(), config.NssScopes)
+			if err != nil {
+				errorLog.Println(err)
+			}
+			//infoLog.Println("Acquired Access Token " + result.AccessToken)
+			debugLog.Println("Acquired Access Token")
+			return result, err
+		}
+		debugLog.Println("Silently acquired token")
+		return result, err
+	} else {
+		app, err := confidential.New(config.ClientID, cred, confidential.WithAuthority("https://login.microsoftonline.com/"+config.TenantID))
+		if err != nil {
+			errorLog.Println(err)
+		}
 		result, err = app.AcquireTokenByCredential(context.Background(), config.NssScopes)
 		if err != nil {
 			errorLog.Println(err)
@@ -107,8 +140,6 @@ func (self LibNssOauth) oauth_init() (result confidential.AuthResult, err error)
 		debugLog.Println("Acquired Access Token")
 		return result, err
 	}
-	debugLog.Println("Silently acquired token")
-	return result, err
 }
 
 //Request against Microsoft Graph API using token, return JSON
@@ -413,7 +444,7 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 		tempUser.Shell = "/bin/bash"
 
 		//Add this user to result if no errors flagged
-		if userUIDErr == true && config.UserAutoUID == true {
+		if userUIDErr == true && config.UserAutoUID == true && isroot {
 			//Do the magic and set UID
 			tempUser.UID, err = self.AutoSetUID(result.AccessToken, xx["id"].(string))
 			//AzureAD eventual consistency...Pause to prevent UID clash
@@ -511,7 +542,7 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 	passwdResult.Shell = "/bin/bash"
 
 	//Add this user to result if no errors flagged
-	if userUIDErr == true && config.UserAutoUID == true {
+	if userUIDErr == true && config.UserAutoUID == true && isroot {
 		//Do the magic and set UID
 		passwdResult.UID, err = self.AutoSetUID(result.AccessToken, jsonOutput["id"].(string))
 		debugLog.Println("UserID:", jsonOutput["id"].(string))              //DEBUG
@@ -636,7 +667,7 @@ func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
 		if xx[config.GroupGidAttribute] != nil {
 			tempGroup.GID = uint(xx[config.GroupGidAttribute].(float64))
 			groupResult = append(groupResult, tempGroup)
-		} else if xx[config.GroupGidAttribute] == nil && config.GroupAutoGID == true {
+		} else if xx[config.GroupGidAttribute] == nil && config.GroupAutoGID == true && isroot {
 			tempGroup.GID, err = self.AutoSetGID(result.AccessToken, xx["id"].(string))
 			groupResult = append(groupResult, tempGroup)
 		}
@@ -696,7 +727,7 @@ func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) 
 			if groupOutput[config.GroupGidAttribute] != nil {
 				groupResult.GID = uint(groupOutput[config.GroupGidAttribute].(float64))
 				return nss.StatusSuccess, groupResult
-			} else if groupOutput[config.GroupGidAttribute] == nil && config.GroupAutoGID == true {
+			} else if groupOutput[config.GroupGidAttribute] == nil && config.GroupAutoGID == true && isroot {
 				groupResult.GID, err = self.AutoSetGID(result.AccessToken, groupOutput["id"].(string))
 				return nss.StatusSuccess, groupResult
 			}

@@ -8,8 +8,9 @@ import (
 )
 
 const configFile = "/etc/azuread.conf"
+const configFileSecrets = "/etc/azuread-secret.conf"
 
-// config define openid Connect parameters
+// config define azureAD parameters
 // and setting for this module
 type Config struct {
 	ClientID     string `yaml:"client-id"`
@@ -34,6 +35,10 @@ type Config struct {
 	PamScopes []string `yaml:"pam-scopes"`
 	NssScopes []string `yaml:"nss-scopes"`
 }
+type ConfigSecrets struct {
+	ClientID     string `yaml:"client-id"`
+	ClientSecret string `yaml:"client-secret"`
+}
 
 // ReadConfig
 // need file path from yaml and return config
@@ -43,6 +48,18 @@ func ReadConfig() (*Config, error) {
 		return nil, err
 	}
 	var c Config
+	err = yaml.Unmarshal(yamlFile, &c)
+	if err != nil {
+		return nil, fmt.Errorf("unable to unmarshal filecontent to config struct:%w", err)
+	}
+	return &c, nil
+}
+func ReadSecrets() (*ConfigSecrets, error) {
+	yamlFile, err := os.ReadFile(configFileSecrets)
+	if err != nil {
+		return nil, err
+	}
+	var c ConfigSecrets
 	err = yaml.Unmarshal(yamlFile, &c)
 	if err != nil {
 		return nil, fmt.Errorf("unable to unmarshal filecontent to config struct:%w", err)

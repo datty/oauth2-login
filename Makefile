@@ -42,4 +42,5 @@ clean:
 install: all
 	${INSTALL_DATA} bin/libnss_azuread.so.2 ${prefix}/lib/libnss_azuread.so.2
 	${INSTALL_PROGRAM} bin/pam_azuread.so ${prefix}/usr/lib/x86_64-linux-gnu/security/pam_azuread.so
-	${INSTALL_DATA} sample.yaml ${prefix}/etc/azuread.conf
+	${INSTALL_DATA} sample-azuread.yaml ${prefix}/etc/azuread.conf
+	${INSTALL_DATA} sample-azuread-secret.yaml ${prefix}/etc/azuread-secret.conf
