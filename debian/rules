@@ -2,10 +2,5 @@
 %:
 	dh $@
 
-install: build
-	dh_testdir
-	dh_testroot
-	dh_installdirs
-
-	# Add here commands to install the package into debian/<packagename>
-	$(MAKE) prefix=`pwd`/debian/`dh_listpackages` install
+override_dh_auto_install:
+	$(MAKE) DESTDIR=$$(pwd)/debian/pam-azuread prefix=/usr install

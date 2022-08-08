@@ -1,7 +1,8 @@
-pam-azuread (0.1.2-1) UNRELEASED; urgency=medium
+pam-azuread (0.1.3-1) UNRELEASED; urgency=medium
 
   * Initial release
   * Fixes to packaging for debian/ubuntu
   * Return horrible default values for account expiration - Fixes shadow account expiration
+  * Fix makefile dir creation and move to debian packaging
 
- -- Oliver Smith <osmith@netvirta.com>  Tue, 09 Aug 2022 03:07:45 +0800
+ -- Oliver Smith <osmith@netvirta.com>  Tue, 09 Aug 2022 03:55:06 +0800

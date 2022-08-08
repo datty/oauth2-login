@@ -26,10 +26,7 @@ clean:
 	rm -rf bin/*
 
 install: all
-	mkdir -p ${prefix}/lib/x86_64-linux-gnu
-	mkdir -p ${prefix}/lib/x86_64-linux-gnu/security
-	mkdir -p ${prefix}/etc
-	${INSTALL_DATA} bin/libnss_azuread.so.2 ${prefix}/usr/lib/x86_64-linux-gnu/libnss_azuread.so.2
-	${INSTALL_DATA} bin/pam_azuread.so ${prefix}/usr/lib/x86_64-linux-gnu/security/pam_azuread.so
-	${INSTALL_DATA} sample-azuread.yaml ${prefix}/etc/azuread.conf
-	${INSTALL_SECRET} sample-azuread-secret.yaml ${prefix}/etc/azuread-secret.conf
+	${INSTALL_DATA} bin/libnss_azuread.so.2 $(DESTDIR)${prefix}/lib/x86_64-linux-gnu/libnss_azuread.so.2
+	${INSTALL_DATA} bin/pam_azuread.so $(DESTDIR)${prefix}/lib/x86_64-linux-gnu/security/pam_azuread.so
+	${INSTALL_DATA} sample-azuread.yaml $(DESTDIR)/etc/azuread.conf
+	${INSTALL_SECRET} sample-azuread-secret.yaml $(DESTDIR)/etc/azuread-secret.conf
