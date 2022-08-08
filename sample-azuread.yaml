@@ -1,0 +1,24 @@
+---
+client-id: "xxxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+client-secret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+redirect-url: "urn:ietf:wg:oauth:2.0:oob"
+pam-scopes: 
+    - "openid"
+    - "email"
+nss-scopes:
+    - "https://graph.microsoft.com/.default"
+    - "openid"
+tenant-id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+o365-domain: "%s@example.org"
+custom-security-attributes: true
+attribute-set: "RFC2307"
+user-uid-attribute-name: "UID"
+user-gid-attribute-name: "GID"
+user-gid-default: 100
+user-auto-uid: true
+uid-range-min: 10000
+uid-range-max: 15000
+group-gid-attribute-name: "extension_UUIDX_GID"
+group-auto-gid: true
+gid-range-min: 1100
+gid-range-max: 1300
