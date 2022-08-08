@@ -816,10 +816,8 @@ func (self LibNssOauth) ShadowAll() (nss.Status, []nssStructs.Shadow) {
 		tempUser.Username = user
 		tempUser.Password = "*"
 		tempUser.PasswordWarn = 7
-		//log.Printf("Last Password Change: %s", xx["lastPasswordChangeDateTime"].(string))
-		tempUser.LastChange = 19000
-		//tempUser.LastChange = xx["lastPasswordChangeDateTime"]
-		log.Println(tempUser)
+		lastpasschange, _ := time.Parse(time.RFC3339, xx["lastPasswordChangeDateTime"].(string))
+		tempUser.LastChange = int(lastpasschange.Unix() / 86400)
 		shadowResult = append(shadowResult, tempUser)
 	}
 
@@ -849,9 +847,8 @@ func (self LibNssOauth) ShadowByName(name string) (nss.Status, nssStructs.Shadow
 
 	//Strip domain from UPN
 	user := strings.Split(jsonOutput["userPrincipalName"].(string), "@")[0]
-
-	//tempUser.LastChange = xx["lastPasswordChangeDateTime"]
-	shadowResult := nssStructs.Shadow{Username: user, Password: "*", PasswordWarn: 7, LastChange: 19000, MinChange: 1, MaxChange: 365, ExpirationDate: 19500}
+	lastpasschange, _ := time.Parse(time.RFC3339, jsonOutput["lastPasswordChangeDateTime"].(string))
+	shadowResult := nssStructs.Shadow{Username: user, Password: "*", PasswordWarn: 7, LastChange: int(lastpasschange.Unix() / 86400), MinChange: 0, MaxChange: 0, ExpirationDate: 0}
 
 	return nss.StatusSuccess, shadowResult
 }
