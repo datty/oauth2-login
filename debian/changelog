@@ -1,0 +1,6 @@
+pam-azuread (0.1.1-1) UNRELEASED; urgency=medium
+
+  * Initial release
+  * Fixes to packaging for debian/ubuntu
+
+ -- Oliver Smith <osmith@netvirta.com>  Tue, 09 Aug 2022 02:43:20 +0800

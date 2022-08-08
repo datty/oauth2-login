@@ -1,0 +1,12 @@
+Source: pam-azuread
+Maintainer: Oliver Smith <osmith@netvirta.com>
+Section: admin
+Priority: optional
+Standards-Version: 4.5.0
+Build-Depends: debhelper (>= 9), golang (>=1.18.3)
+
+Package: pam-azuread
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, nscd
+Description: NSS/PAM modules to authenticate and lookup passwd, group, shadow info from AzureAD
+  Allows AzureAD to be used as an authentication source for Linux machines
