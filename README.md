@@ -6,6 +6,8 @@ This is based on work in the following repos:
 - https://github.com/shimt/pam-exec-oauth2
 - https://github.com/metal-stack/pam-exec-oauth2
 
+Due to lookup speeds and some outstanding issues on group lookup, this module must be used with NSCD.
+
 ## Install
 
 ```bash
