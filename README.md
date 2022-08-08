@@ -18,29 +18,32 @@ sudo make install
 
 ### PAM
 
-add the following lines to `/etc/pam.d/common-auth`
+Update the following lines in `/etc/pam.d/common-auth`
 
 ```
 #### authenticate with azuread flow #####
-auth sufficient pam_azuread.so
+# here are the per-package modules (the "Primary" block)
+auth    [success=2 default=ignore]      pam_unix.so nullok
+auth    [success=1 default=ignore]      pam_azuread.so
 ```
 
 ### NSS
 
-add `azuread` to the `passwd:` line in `/etc/nsswitch.conf` like this:
+add `azuread` to the `passwd:`, `group:`, and `shadow:` lines in `/etc/nsswitch.conf` like this:
 
 ```
 # /etc/nsswitch.conf
-
 passwd:         files systemd azuread
+group:          files systemd azuread
+shadow:         files azuread
 ```
 
 ### azuread.conf
 
-Configuration must be stored in `/etc/azuread.conf`. There is no option to change the location
+Configuration must be stored in `/etc/azuread.conf` and `/etc/azuread-secret.conf`. There is no option to change the location
 of this config file. Example:
 
-#### Azure AD Sample Config
+#### Sample azuread.conf
 
 ```yaml
 ---
@@ -67,6 +70,14 @@ group-gid-attribute-name: "extension_UUIDX_GID"
 group-auto-gid: true
 gid-range-min: 1000
 gid-range-max: 1200
+```
+
+#### Sample azuread-secret.conf
+
+```yaml
+---
+client-id: "xxxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+client-secret: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 ```
 
 #### Config options
