@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -38,6 +37,39 @@ func init() {
 type LibNssOauth struct{ nss.LIBNSS }
 
 var config *conf.Config
+
+//Random ID generator functions
+func generateUniqueID(s []int, min int, max int) int {
+
+	var uid int
+	uniqueID := false
+
+	//Check Min/Max values are valid
+	if min == 0 || max == 0 {
+		errorLog.Println("Min/Max range is not set. Using default range 10000-15000")
+		min = 10000
+		max = 15000
+	}
+	for uniqueID != true {
+		rand.Seed(time.Now().UnixNano())
+		uid = min + rand.Intn(max-min+1)
+		if intContains(s, uid) == false {
+			uniqueID = true
+			debugLog.Println("UniqueID Gen is unique:", uid) //DEBUG
+		}
+	}
+	return uid
+}
+
+//Find int in array of ints
+func intContains(s []int, e int) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+	return false
+}
 
 func (self LibNssOauth) oauth_init() (result confidential.AuthResult, err error) {
 
@@ -186,9 +218,7 @@ func (self LibNssOauth) GetUnusedUID(t string) (output uint, err error) {
 			}
 		}
 	}
-	//Sort UIDs backwards
-	sort.Sort(sort.Reverse(sort.IntSlice(uidList)))
-	newUID := uint(uidList[0] + rand.Intn(20))
+	newUID := uint(generateUniqueID(uidList, config.MinUID, config.MaxUID))
 
 	return newUID, nil
 }
@@ -238,6 +268,64 @@ func (self LibNssOauth) AutoSetUID(t string, userid string) (uid uint, err error
 	}
 	return uid, err
 
+}
+
+//Lookup existing GIDs and generate a unique GID
+func (self LibNssOauth) GetUnusedGID(t string) (output uint, err error) {
+
+	//Build all users query. Filters users without licences and only returns required fields.
+	getGIDQuery := "v1.0/groups?$filter=securityEnabled+eq+true&$select=" + config.GroupGidAttribute
+	debugLog.Println("Query:", getGIDQuery) //DEBUG
+	jsonOutput, err := self.msgraph_req(t, getGIDQuery)
+	if err != nil {
+		errorLog.Println("MSGraph request failed:", err)
+		return 0, err
+	}
+
+	//Create empty gidlist
+	gidList := []int{}
+
+	//Collect existing gids
+	for _, groupResult := range jsonOutput["value"].([]interface{}) {
+		//Map value var to correct type to allow for access
+		xx := groupResult.(map[string]interface{})
+
+		//Get GIDs
+		if xx[config.GroupGidAttribute] != nil {
+			gidList = append(gidList, int(xx[config.GroupGidAttribute].(float64)))
+		}
+	}
+	newGID := uint(generateUniqueID(gidList, config.MinGID, config.MaxGID))
+
+	return newGID, nil
+}
+
+//Get unusedGID from above function and then apply to AzureAD
+func (self LibNssOauth) AutoSetGID(t string, groupid string) (gid uint, err error) {
+
+	//Get Next Available UID
+	gid, err = self.GetUnusedGID(t)
+	if err != nil {
+		return 0, err
+	}
+
+	//Build query and body to set GID
+	var json string
+	setGIDQuery := "v1.0/groups/" + groupid
+	debugLog.Println("AutoSetGID Query:", setGIDQuery) //DEBUG
+	//Set JSON
+	json = fmt.Sprintf(`{
+		"%s": %d
+	}`, config.GroupGidAttribute, gid)
+	debugLog.Println("AutoSetGID JSON:", json) //DEBUG
+	_, err = self.msgraph_update(t, setGIDQuery, []byte(json))
+
+	if err != nil {
+		errorLog.Println("MSGraph request failed:", err)
+		return 0, err
+	}
+	debugLog.Println("Set GID for: ", gid)
+	return gid, err
 }
 
 // PasswdAll will populate all entries for libnss
@@ -431,6 +519,7 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 		debugLog.Println("New UID:", passwdResult.UID)                      //DEBUG
 	} else if userUIDErr == true && config.UserAutoUID == false {
 		//Return not found if no UID and auto UID disabled
+		debugLog.Println("Hitting here")
 		return nss.StatusNotfound, nssStructs.Passwd{}
 	}
 
@@ -526,12 +615,12 @@ func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
 	//Open Slice/Struct for result
 	groupResult := []nssStructs.Group{}
 
-	for _, result := range jsonOutput["value"].([]interface{}) {
+	for _, grpresult := range jsonOutput["value"].([]interface{}) {
 		//Create temporary struct for group info
 		tempGroup := nssStructs.Group{}
 
 		//Map value var to correct type to allow for access
-		xx := result.(map[string]interface{})
+		xx := grpresult.(map[string]interface{})
 		tempGroupMembers := []string{}
 		//Get Group Members
 		for _, members := range xx["members"].([]interface{}) {
@@ -546,6 +635,9 @@ func (self LibNssOauth) GroupAll() (nss.Status, []nssStructs.Group) {
 		tempGroup.Password = "x"
 		if xx[config.GroupGidAttribute] != nil {
 			tempGroup.GID = uint(xx[config.GroupGidAttribute].(float64))
+			groupResult = append(groupResult, tempGroup)
+		} else if xx[config.GroupGidAttribute] == nil && config.GroupAutoGID == true {
+			tempGroup.GID, err = self.AutoSetGID(result.AccessToken, xx["id"].(string))
 			groupResult = append(groupResult, tempGroup)
 		}
 	}
@@ -565,7 +657,7 @@ func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) 
 	groupName := url.QueryEscape(name)
 	//Search for group by display name, simple query due to MS Graph 400
 	getGroupQuery := "v1.0/groups?$filter=securityEnabled+eq+true&$select=id,displayName&$search=\"displayName:" + groupName + "\""
-	debugLog.Println("GroupByName Query:", name) //DEBUG
+	debugLog.Println("GroupByName Query:", getGroupQuery) //DEBUG
 	jsonOutput, err := self.msgraph_req(result.AccessToken, getGroupQuery)
 	if err != nil {
 		errorLog.Println("MSGraph request failed:", err)
@@ -601,8 +693,11 @@ func (self LibNssOauth) GroupByName(name string) (nss.Status, nssStructs.Group) 
 			groupResult.Members = tempGroupMembers
 			groupResult.Groupname = groupOutput["displayName"].(string)
 			groupResult.Password = "x"
-			if xx[config.GroupGidAttribute] != nil {
+			if groupOutput[config.GroupGidAttribute] != nil {
 				groupResult.GID = uint(groupOutput[config.GroupGidAttribute].(float64))
+				return nss.StatusSuccess, groupResult
+			} else if groupOutput[config.GroupGidAttribute] == nil && config.GroupAutoGID == true {
+				groupResult.GID, err = self.AutoSetGID(result.AccessToken, groupOutput["id"].(string))
 				return nss.StatusSuccess, groupResult
 			}
 		}

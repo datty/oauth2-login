@@ -60,15 +60,22 @@ attribute-set: "RFC2307"
 user-uid-attribute-name: "UID"
 user-gid-attribute-name: "GID"
 user-gid-default: 100
+user-auto-uid: true
+uid-range-min: 10000
+uid-range-max: 15000
 group-gid-attribute-name: "extension_UUIDX_GID"
+group-auto-gid: true
+gid-range-min: 1000
+gid-range-max: 1200
 ```
 
 #### Config options
-
-- `createuser`: Enable user account autocreation.
-- `sufficient-roles`: User must have these roles assigned to login.
-- `allowed-roles`: If a user has these roles, they will be assigned to his Unix user as groups.
-  All other roles will be ignored.
+- `custom-security-attributes`: Uses AzureAD custom security attributes for storing user UID/GID.
+    - `attribute-set`: The custom security attribute set which contains UIDs/GIDs. This must be created manually using the AzureAD AAD console
+- `user-uid-attribute-name`: The attribute to lookup which will contain the user UID
+- `user-gid-attribute-name`: The attribute to lookup which will contain the user GID
+- `user-auto-uid`: Enable automatic creation of user UIDs. Where no UID is set the uid-range-min and uid-range-max values will be used to find a unique ID within this range
+- `group-auto-gid`: Enable automatic creation of group GIDs. Where no GID is set the gid-range-min and gid-range-max values will be used to find a unique ID within this range
 
 #### Azure AD Setup
 Quickly noting group GID attribute setup.

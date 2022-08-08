@@ -24,8 +24,12 @@ type Config struct {
 	UserGIDAttribute  string `yaml:"user-gid-attribute-name"`
 	UserDefaultGID    uint   `yaml:"user-gid-default"`
 	UserAutoUID       bool   `yaml:"user-auto-uid"`
+	MinUID            int    `yaml:"uid-range-min"`
+	MaxUID            int    `yaml:"uid-range-max"`
 	GroupGidAttribute string `yaml:"group-gid-attribute-name"`
 	GroupAutoGID      bool   `yaml:"group-auto-gid"`
+	MinGID            int    `yaml:"gid-range-min"`
+	MaxGID            int    `yaml:"gid-range-max"`
 	//Should not need to change these...
 	PamScopes []string `yaml:"pam-scopes"`
 	NssScopes []string `yaml:"nss-scopes"`
