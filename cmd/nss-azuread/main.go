@@ -370,7 +370,7 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 	}
 
 	//Build all users query. Filters users without licences and only returns required fields.
-	getUserQuery := "/users?$filter=assignedLicenses/$count+ne+0&$count=true&$select=id,userPrincipalName"
+	getUserQuery := "/users?$filter=assignedLicenses/$count+ne+0&$count=true&$select=id,displayName,userPrincipalName"
 	if config.UseSecAttributes {
 		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
 		getUserQuery = "beta" + getUserQuery + ",customSecurityAttributes"
@@ -439,7 +439,7 @@ func (self LibNssOauth) PasswdAll() (nss.Status, []nssStructs.Passwd) {
 		//Set user info
 		tempUser.Username = user
 		tempUser.Password = "x"
-		tempUser.Gecos = app
+		tempUser.Gecos = xx["displayName"].(string)
 		tempUser.Dir = fmt.Sprintf("/home/%s", user)
 		tempUser.Shell = "/bin/bash"
 
@@ -475,7 +475,7 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 	//Build all users query, only returns required fields
 	username := fmt.Sprintf(config.Domain, name)
 
-	getUserQuery := "/users/" + username + "?$count=true&$select=id,userPrincipalName"
+	getUserQuery := "/users/" + username + "?$count=true&$select=id,displayName,userPrincipalName"
 	if config.UseSecAttributes {
 		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
 		getUserQuery = "beta" + getUserQuery + ",customSecurityAttributes"
@@ -537,7 +537,7 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 	//Set user info
 	passwdResult.Username = user
 	passwdResult.Password = "x"
-	passwdResult.Gecos = app
+	passwdResult.Gecos = jsonOutput["displayName"].(string)
 	passwdResult.Dir = fmt.Sprintf("/home/%s", user)
 	passwdResult.Shell = "/bin/bash"
 
@@ -549,8 +549,6 @@ func (self LibNssOauth) PasswdByName(name string) (nss.Status, nssStructs.Passwd
 		debugLog.Println("User:", jsonOutput["userPrincipalName"].(string)) //DEBUG
 		debugLog.Println("New UID:", passwdResult.UID)                      //DEBUG
 	} else if userUIDErr == true && config.UserAutoUID == false {
-		//Return not found if no UID and auto UID disabled
-		debugLog.Println("Hitting here")
 		return nss.StatusNotfound, nssStructs.Passwd{}
 	}
 
@@ -567,7 +565,7 @@ func (self LibNssOauth) PasswdByUid(uid uint) (nss.Status, nssStructs.Passwd) {
 		return nss.StatusUnavail, nssStructs.Passwd{}
 	}
 
-	getUserQuery := "/users/?$count=true&$select=id,userPrincipalName"
+	getUserQuery := "/users/?$count=true&$select=id,displayName,userPrincipalName"
 	if config.UseSecAttributes {
 		//Uses 'beta' endpoint as customSecurityAttributes are only available there.
 		getUserQuery = "beta" + getUserQuery + ",customSecurityAttributes&$filter=customSecurityAttributes/" + config.AttributeSet + "/" + config.UserUIDAttribute + "+eq+" + fmt.Sprintf("%d", uid)
@@ -615,7 +613,7 @@ func (self LibNssOauth) PasswdByUid(uid uint) (nss.Status, nssStructs.Passwd) {
 		//Set user info
 		passwdResult.Username = user
 		passwdResult.Password = "x"
-		passwdResult.Gecos = app
+		passwdResult.Gecos = xy["displayName"].(string)
 		passwdResult.Dir = fmt.Sprintf("/home/%s", user)
 		passwdResult.Shell = "/bin/bash"
 
