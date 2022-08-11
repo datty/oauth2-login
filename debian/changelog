@@ -1,4 +1,10 @@
-pam-azuread (0.1.3-1) UNRELEASED; urgency=medium
+pam-azuread (0.1.4-1) devel; urgency=medium
+
+  * Added display name for gecos field in passwd
+
+ -- Oliver Smith <osmith@netvirta.com>  Thu, 11 Aug 2022 15:28:14 +0800
+
+pam-azuread (0.1.3-1) devel; urgency=medium
 
   * Initial release
   * Fixes to packaging for debian/ubuntu
